@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-discord-blurple: #5865F2;
+  --color-discord-dark: #313338;
+  --color-discord-darker: #2b2d31;
+  --color-discord-deep: #1e1f22;
+  --color-discord-green: #23a55a;
+  --color-discord-yellow: #f0b232;
+  --color-discord-red: #f23f43;
+  --color-discord-gray: #949ba4;
+}
+
+/* Custom gorgeous scrollbar for Discord style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e1f22;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2b2d31;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5865F2;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #0f172a; /* Deep elegant slate */
+  color: #f8fafc;
+}
+
+.discord-message-highlight {
+  position: relative;
+}
+
+.discord-message-highlight::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--color-discord-yellow);
+}

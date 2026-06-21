@@ -1,0 +1,6 @@
+{
+  "name": "Discord Bot Auto-Store & Moderation Panel",
+  "description": "Dashboard admin web responsif untuk mengelola bot Discord auto-store produk digital, sistem klaim otomatis, kustomisasi perintah, statistik real-time, dan auto-moderasi tingkat lanjut.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

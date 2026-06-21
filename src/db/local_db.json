@@ -1,0 +1,34 @@
+{
+  "config": {
+    "prefix": "!",
+    "statusText": "Auto-Store | /buy",
+    "statusType": "WATCHING",
+    "webhookUrl": "",
+    "autoClaimOnPayment": true,
+    "greetingMessage": "Selamat datang di Premium Store!",
+    "autoMod": {
+      "antiLink": true,
+      "antiSpam": true,
+      "warnLimit": 3,
+      "bannedWords": [
+        "scam",
+        "cheat",
+        "hack",
+        "free-nitro"
+      ]
+    },
+    "botToken": ""
+  },
+  "stats": {
+    "totalRevenue": 0,
+    "totalOrders": 0,
+    "totalProducts": 0,
+    "activeServers": 0,
+    "commandsRun": 0,
+    "moderationActions": 0
+  },
+  "products": [],
+  "commands": [],
+  "orders": [],
+  "modLogs": []
+}
