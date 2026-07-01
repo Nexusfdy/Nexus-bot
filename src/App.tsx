@@ -7,11 +7,14 @@ import CustomCommandsPanel from './components/CustomCommandsPanel';
 import AutoModPanel from './components/AutoModPanel';
 import DiscordSimulator from './components/DiscordSimulator';
 import TransactionsTable from './components/TransactionsTable';
+import LedgerTransactions from './components/ledger/LedgerTransactions';
+import UserManagement from './components/users/UserManagement';
 import { Terminal, Menu } from 'lucide-react';
 import ConfirmModal from './components/common/ConfirmModal';
 import ToastContainer, { Toast } from './components/common/ToastContainer';
 import { useBotData } from './hooks/useBotData';
 import { useBotActions } from './hooks/useBotActions';
+import { fetchWithAuth as fetch } from './lib/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -26,27 +29,53 @@ export default function App() {
 
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  const timersRef = React.useRef<NodeJS.Timeout[]>([]);
+
+  React.useEffect(() => {
+    return () => {
+      timersRef.current.forEach(timer => clearTimeout(timer));
+    };
+  }, []);
+
+  const safeSetTimeout = (cb: () => void, ms: number) => {
+    const timer = setTimeout(() => {
+      cb();
+      timersRef.current = timersRef.current.filter(t => t !== timer);
+    }, ms);
+    timersRef.current.push(timer);
+    return timer;
+  };
+
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => { setToasts(prev => prev.filter(t => t.id !== id)); }, 4500);
+    safeSetTimeout(() => { setToasts(prev => prev.filter(t => t.id !== id)); }, 4500);
   };
 
   const {
     botOnline, botStatus, botError, botUser, dbEngine,
-    products, commands, config, stats, orders, modLogs, refreshAllData
+    products, commands, config, stats, orders, modLogs, refreshAllData, isDataLoaded
   } = useBotData();
 
   const botActions = useBotActions(refreshAllData, products, commands, config, stats, setConfirmModal, showToast);
 
-  const handleClearModLogs = async () => { console.log('Pruning logs requested'); };
+  const handleClearModLogs = async () => {
+    try {
+      await fetch('/api/mod_logs', { method: 'DELETE' });
+      await refreshAllData();
+      showToast('Log Auto-Mod berhasil dikosongkan', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Gagal mengosongkan log', 'error');
+    }
+  };
 
   const handleRestartBot = async () => {
     setRestarting(true);
     try {
       await fetch('/api/bot/restart', { method: 'POST' });
       await refreshAllData();
-    } catch (err) { console.warn(err); } finally { setTimeout(() => setRestarting(false), 2000); }
+    } catch (err) { console.warn(err); } finally { safeSetTimeout(() => setRestarting(false), 2000); }
   };
 
   const handleManualMarkSuccess = async (orderId: string) => {
@@ -95,12 +124,26 @@ export default function App() {
               onUpdateProduct={botActions.handleUpdateProduct} onDeleteProduct={botActions.handleDeleteProduct}
             />
           )}
+          {activeTab === 'users' && (
+            <UserManagement />
+          )}
+          {activeTab === 'transactions' && (
+            <LedgerTransactions />
+          )}
           {activeTab === 'config' && (
-            <BotConfigPanel 
-              config={config} onSaveConfig={botActions.handleSaveBotConfig}
-              onTriggerWebhookTest={botActions.handleTriggerWebhookTest} botStatus={botStatus}
-              botOnline={botOnline} botError={botError} botUser={botUser}
-            />
+            isDataLoaded ? (
+              <BotConfigPanel 
+                config={config} onSaveConfig={botActions.handleSaveBotConfig}
+                onUpdatePartialConfig={botActions.handleUpdatePartialConfig}
+                onTriggerWebhookTest={botActions.handleTriggerWebhookTest} botStatus={botStatus}
+                botOnline={botOnline} botError={botError} botUser={botUser}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center p-20 text-slate-400">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500 mb-4"></div>
+                <p>Loading configuration...</p>
+              </div>
+            )
           )}
           {activeTab === 'custom-commands' && (
             <CustomCommandsPanel 

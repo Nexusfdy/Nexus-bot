@@ -7,3 +7,11 @@ export const discordState = {
   botLatency: 0,
   joinedServersCount: 0
 };
+
+export function loadServerState() {
+  // Real-time process state only
+}
+
+export function saveServerState() {
+  // Real-time process state only
+}

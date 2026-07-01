@@ -1,20 +1,20 @@
-import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
 import { Product, Order, CustomCommand, BotConfig, ModLog, BotStats } from '../types.ts';
 
 // Dynamic Database Credentials from Environment
-const DATABASE_URL = process.env.DATABASE_URL || process.env.SQL_CONN_STRING;
-const SQL_HOST = process.env.SQL_HOST;
-const SQL_DB_NAME = process.env.SQL_DB_NAME;
-const SQL_USER = process.env.SQL_USER;
-const SQL_PASSWORD = process.env.SQL_PASSWORD;
+const DATABASE_URL = process.env.DATABASE_URL;
+const POSTGRES_HOST = process.env.POSTGRES_HOST || process.env.SQL_HOST;
+const POSTGRES_PORT = process.env.POSTGRES_PORT ? parseInt(process.env.POSTGRES_PORT, 10) : 5432;
+const POSTGRES_USER = process.env.POSTGRES_USER || process.env.SQL_USER;
+const POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD || process.env.SQL_PASSWORD;
+const POSTGRES_DATABASE = process.env.POSTGRES_DATABASE || process.env.POSTGRES_DB || process.env.SQL_DB_NAME;
 
 let pgPool: Pool | null = null;
 let dbType: 'PostgreSQL' | 'Local JSON File' = 'Local JSON File';
 
 // Initialize Postgres Pool if credentials or connection URL exists
-if (DATABASE_URL || (SQL_HOST && SQL_DB_NAME && SQL_USER)) {
+if (DATABASE_URL || (POSTGRES_HOST && POSTGRES_DATABASE && POSTGRES_USER)) {
   try {
     if (DATABASE_URL) {
       // Connect using full connection URL (ideal for Supabase, Neon, etc.)
@@ -29,11 +29,11 @@ if (DATABASE_URL || (SQL_HOST && SQL_DB_NAME && SQL_USER)) {
     } else {
       // Connect using individual credentials
       pgPool = new Pool({
-        host: SQL_HOST,
-        database: SQL_DB_NAME,
-        user: SQL_USER,
-        password: SQL_PASSWORD,
-        port: 5432,
+        host: POSTGRES_HOST,
+        port: POSTGRES_PORT,
+        database: POSTGRES_DATABASE,
+        user: POSTGRES_USER,
+        password: POSTGRES_PASSWORD,
         max: 10,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 5000,
@@ -54,15 +54,6 @@ if (DATABASE_URL || (SQL_HOST && SQL_DB_NAME && SQL_USER)) {
 } else {
   console.log('PostgreSQL environment variables missing. Operating in Local JSON File mode.');
   dbType = 'Local JSON File';
-}
-
-// Local JSON file path for fallback persistence
-const LOCAL_DB_PATH = path.join(process.cwd(), 'src', 'db', 'local_db.json');
-
-// Ensure parent folder exists
-const dbDir = path.dirname(LOCAL_DB_PATH);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
 }
 
 // Default initial data for seeding
@@ -100,7 +91,7 @@ const defaultOrders: Order[] = [];
 const defaultModLogs: ModLog[] = [];
 
 // Seed databases
-async function bootstrapTables() {
+export async function bootstrapTables() {
   if (dbType === 'PostgreSQL' && pgPool) {
     try {
       const client = await pgPool.connect();
@@ -109,6 +100,7 @@ async function bootstrapTables() {
         await client.query(`
           CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
+            code TEXT,
             name TEXT NOT NULL,
             price INTEGER NOT NULL,
             description TEXT,
@@ -150,11 +142,14 @@ async function bootstrapTables() {
             webhook_url TEXT,
             auto_claim_on_payment BOOLEAN NOT NULL,
             greeting_message TEXT,
+            live_stock_channel TEXT,
             anti_link BOOLEAN NOT NULL,
             anti_spam BOOLEAN NOT NULL,
             warn_limit INTEGER NOT NULL,
             banned_words TEXT[],
-            bot_token TEXT
+            bot_token TEXT,
+            owner_id TEXT,
+            server_management JSONB
           );
           
           CREATE TABLE IF NOT EXISTS mod_logs (
@@ -175,6 +170,35 @@ async function bootstrapTables() {
             commands_run INTEGER NOT NULL DEFAULT 0,
             moderation_actions INTEGER NOT NULL DEFAULT 0
           );
+          
+          CREATE TABLE IF NOT EXISTS users (
+            discord_id TEXT PRIMARY KEY,
+            account_name TEXT UNIQUE NOT NULL,
+            balance INTEGER NOT NULL DEFAULT 0,
+            created_at BIGINT NOT NULL
+          );
+          
+          CREATE TABLE IF NOT EXISTS transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            username TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT,
+            timestamp BIGINT NOT NULL
+          );
+
+          CREATE TABLE IF NOT EXISTS purchased_items (
+            transaction_id TEXT PRIMARY KEY REFERENCES transactions(id),
+            user_id TEXT NOT NULL,
+            product_name TEXT NOT NULL,
+            items JSONB,
+            delivery_status TEXT DEFAULT 'PENDING_DELIVERY'
+          );
+          CREATE TABLE IF NOT EXISTS processed_webhooks (
+            message_id TEXT PRIMARY KEY,
+            processed_at BIGINT NOT NULL
+          );
         `);
         console.log('[PostgreSQL] Tables checked/created successfully.');
 
@@ -182,6 +206,14 @@ async function bootstrapTables() {
         console.log('[PostgreSQL] Running incremental migrations...');
         await client.query(`
           ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS bot_token TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS live_stock_channel TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS live_stock_message_id TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS owner_id TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS server_management JSONB;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS saweria_webhook_channel_id TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS deposit_webhook_channel_id TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS guild_id TEXT;
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS code TEXT;
         `);
         console.log('[PostgreSQL] Incremental migrations completed successfully.');
 
@@ -190,8 +222,8 @@ async function bootstrapTables() {
         if (parseInt(configCheck.rows[0].count) === 0) {
           console.log('[PostgreSQL] Seeding default bot credentials...');
           await client.query({
-            text: `INSERT INTO bot_config (id, prefix, status_text, status_type, webhook_url, auto_claim_on_payment, greeting_message, anti_link, anti_spam, warn_limit, banned_words, bot_token) 
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            text: `INSERT INTO bot_config (id, prefix, status_text, status_type, webhook_url, auto_claim_on_payment, greeting_message, live_stock_channel, live_stock_message_id, anti_link, anti_spam, warn_limit, banned_words, bot_token, owner_id, server_management) 
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             values: [
               'bot_settings',
               defaultConfig.prefix,
@@ -200,11 +232,15 @@ async function bootstrapTables() {
               defaultConfig.webhookUrl,
               defaultConfig.autoClaimOnPayment,
               defaultConfig.greetingMessage,
+              defaultConfig.liveStockChannel || '',
+              defaultConfig.liveStockMessageId || '',
               defaultConfig.autoMod.antiLink,
               defaultConfig.autoMod.antiSpam,
               defaultConfig.autoMod.warnLimit,
               defaultConfig.autoMod.bannedWords,
-              defaultConfig.botToken || ''
+              defaultConfig.botToken || '',
+              defaultConfig.ownerId || '',
+              defaultConfig.serverManagement ? JSON.stringify(defaultConfig.serverManagement) : null
             ]
           });
         }
@@ -260,6 +296,12 @@ async function bootstrapTables() {
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
               values: [ord.id, ord.productId, ord.productName, ord.price, ord.customerDiscordId || '', ord.customerUsername || '', ord.status, ord.claimedStockItem || '', ord.claimedAt || null, ord.transactionId, ord.createdAt]
             });
+            if (ord.status === 'Success' || ord.status === 'Claimed') {
+              await client.query({
+                text: `INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+                values: [`tx_${ord.id}`, ord.customerDiscordId || '', ord.customerUsername || '', ord.price, 'PURCHASE', `Purchased product: ${ord.productName}`, ord.createdAt]
+              });
+            }
           }
         }
 
@@ -284,20 +326,6 @@ async function bootstrapTables() {
       pgPool = null;
     }
   }
-
-  // Ensure file exists for Local storage
-  if (!fs.existsSync(LOCAL_DB_PATH)) {
-    console.log('[Local File DB] Database file empty/absent. Creating new seed database.');
-    const initialData = {
-      config: defaultConfig,
-      stats: defaultStats,
-      products: defaultProducts,
-      commands: defaultCommands,
-      orders: defaultOrders,
-      modLogs: defaultModLogs
-    };
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(initialData, null, 2), 'utf-8');
-  }
 }
 
 // Perform instant setup on import
@@ -307,30 +335,11 @@ bootstrapTables().catch(err => {
 
 // JSON File Local Methods
 function readLocalFile(): any {
-  try {
-    if (fs.existsSync(LOCAL_DB_PATH)) {
-      const txt = fs.readFileSync(LOCAL_DB_PATH, 'utf-8');
-      return JSON.parse(txt);
-    }
-  } catch (err) {
-    console.error('Failed reading local database JSON disk:', err);
-  }
-  return {
-    config: defaultConfig,
-    stats: defaultStats,
-    products: defaultProducts,
-    commands: defaultCommands,
-    orders: defaultOrders,
-    modLogs: defaultModLogs
-  };
+  throw new Error("PostgreSQL connection is required. Local fallback is disabled.");
 }
 
 function writeLocalFile(data: any) {
-  try {
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Failed writing local database JSON disk:', err);
-  }
+  throw new Error("PostgreSQL connection is required. Local fallback is disabled.");
 }
 
 // Unified export API wrapper
@@ -344,6 +353,7 @@ export const dbService = {
         const res = await pgPool.query('SELECT * FROM products ORDER BY created_at DESC');
         return res.rows.map(row => ({
           id: row.id,
+          code: row.code || '',
           name: row.name,
           price: row.price,
           description: row.description || '',
@@ -354,7 +364,7 @@ export const dbService = {
           createdAt: Number(row.created_at)
         }));
       } catch (err) {
-        console.error('Postgres products load failed, returning disk fallback:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     return readLocalFile().products;
@@ -364,15 +374,15 @@ export const dbService = {
     if (pgPool) {
       try {
         await pgPool.query({
-          text: `INSERT INTO products (id, name, price, description, type, stock, category, image_url, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          text: `INSERT INTO products (id, code, name, price, description, type, stock, category, image_url, created_at)
+                 VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9)
                  ON CONFLICT (id) DO UPDATE SET
-                   name = $2, price = $3, description = $4, type = $5, stock = $6, category = $7, image_url = $8`,
-          values: [prod.id, prod.name, prod.price, prod.description, prod.type, prod.stock, prod.category, prod.imageUrl || '', prod.createdAt]
+                   code = $10, name = $2, price = $3, description = $4, type = $5, stock = $6, category = $7, image_url = $8`,
+          values: [prod.id, prod.name, prod.price, prod.description, prod.type, prod.stock, prod.category, prod.imageUrl || '', prod.createdAt, prod.code || '']
         });
         return;
       } catch (err) {
-        console.error('Postgres saveProduct failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
@@ -391,10 +401,11 @@ export const dbService = {
         await pgPool.query('DELETE FROM products WHERE id = $1', [id]);
         return;
       } catch (err) {
-        console.error('Postgres deleteProduct failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
+    if (!data.products) data.products = [];
     data.products = data.products.filter((p: Product) => p.id !== id);
     writeLocalFile(data);
   },
@@ -413,7 +424,7 @@ export const dbService = {
           isActive: row.is_active
         }));
       } catch (err) {
-        console.error('Postgres commands load failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     return readLocalFile().commands;
@@ -431,7 +442,7 @@ export const dbService = {
         });
         return;
       } catch (err) {
-        console.error('Postgres saveCommand failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
@@ -450,10 +461,11 @@ export const dbService = {
         await pgPool.query('DELETE FROM custom_commands WHERE id = $1', [id]);
         return;
       } catch (err) {
-        console.error('Postgres deleteCommand failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
+    if (!data.commands) data.commands = [];
     data.commands = data.commands.filter((c: CustomCommand) => c.id !== id);
     writeLocalFile(data);
   },
@@ -473,17 +485,23 @@ export const dbService = {
             webhookUrl: row.webhook_url || '',
             autoClaimOnPayment: row.auto_claim_on_payment,
             greetingMessage: row.greeting_message || '',
+            liveStockChannel: row.live_stock_channel || '',
+            liveStockMessageId: row.live_stock_message_id || '',
             autoMod: {
               antiLink: !!row.anti_link,
               antiSpam: !!row.anti_spam,
               warnLimit: row.warn_limit,
               bannedWords: row.banned_words || []
             },
-            botToken: row.bot_token || ''
+            botToken: row.bot_token || '',
+            guildId: row.guild_id || '',
+            ownerId: row.owner_id || '',
+            serverManagement: row.server_management ? (typeof row.server_management === 'string' ? JSON.parse(row.server_management) : row.server_management) : undefined,
+            depositWebhookChannelId: row.deposit_webhook_channel_id || ''
           };
         }
       } catch (err) {
-        console.error('Postgres getConfig load failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     if (!config) {
@@ -529,11 +547,11 @@ export const dbService = {
     if (pgPool) {
       try {
         await pgPool.query({
-          text: `INSERT INTO bot_config (id, prefix, status_text, status_type, webhook_url, auto_claim_on_payment, greeting_message, anti_link, anti_spam, warn_limit, banned_words, bot_token)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          text: `INSERT INTO bot_config (id, prefix, status_text, status_type, webhook_url, auto_claim_on_payment, greeting_message, live_stock_channel, live_stock_message_id, anti_link, anti_spam, warn_limit, banned_words, bot_token, owner_id, server_management, deposit_webhook_channel_id, guild_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                  ON CONFLICT (id) DO UPDATE SET
                    prefix = $2, status_text = $3, status_type = $4, webhook_url = $5, auto_claim_on_payment = $6,
-                   greeting_message = $7, anti_link = $8, anti_spam = $9, warn_limit = $10, banned_words = $11, bot_token = $12`,
+                   greeting_message = $7, live_stock_channel = $8, live_stock_message_id = $9, anti_link = $10, anti_spam = $11, warn_limit = $12, banned_words = $13, bot_token = $14, owner_id = $15, server_management = $16, deposit_webhook_channel_id = $17, guild_id = $18`,
           values: [
             'bot_settings',
             config.prefix,
@@ -542,20 +560,165 @@ export const dbService = {
             config.webhookUrl || '',
             config.autoClaimOnPayment || false,
             config.greetingMessage || '',
+            config.liveStockChannel || '',
+            config.liveStockMessageId || '',
             config.autoMod.antiLink,
             config.autoMod.antiSpam,
             config.autoMod.warnLimit,
             config.autoMod.bannedWords,
-            config.botToken || ''
+            config.botToken || '',
+            config.ownerId || '',
+            config.serverManagement ? JSON.stringify(config.serverManagement) : null,
+            config.depositWebhookChannelId || '',
+            config.guildId || ''
           ]
         });
         return;
       } catch (err) {
-        console.error('Postgres saveConfig failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
     data.config = config;
+    writeLocalFile(data);
+  },
+
+  updateGeneralConfig: async (prefix: string, statusText: string, statusType: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET prefix = $1, status_text = $2, status_type = $3 WHERE id = 'bot_settings'",
+          [prefix, statusText, statusType]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.prefix = prefix;
+    data.config.statusText = statusText;
+    data.config.statusType = statusType;
+    writeLocalFile(data);
+  },
+
+  updateDiscordConfig: async (botToken: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET bot_token = $1 WHERE id = 'bot_settings'",
+          [botToken]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.botToken = botToken;
+    writeLocalFile(data);
+  },
+
+  updateLiveStockConfig: async (guildId: string, liveStockChannel: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET guild_id = $1, live_stock_channel = $2 WHERE id = 'bot_settings'",
+          [guildId, liveStockChannel]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.guildId = guildId;
+    data.config.liveStockChannel = liveStockChannel;
+    writeLocalFile(data);
+  },
+
+  updateLiveStockMessageId: async (liveStockMessageId: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET live_stock_message_id = $1 WHERE id = 'bot_settings'",
+          [liveStockMessageId]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.liveStockMessageId = liveStockMessageId;
+    writeLocalFile(data);
+  },
+
+  updateSaweriaConfig: async (depositWebhookChannelId: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET deposit_webhook_channel_id = $1 WHERE id = 'bot_settings'",
+          [depositWebhookChannelId]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.depositWebhookChannelId = depositWebhookChannelId;
+    writeLocalFile(data);
+  },
+
+  updateSecurityConfig: async (antiLink: boolean, antiSpam: boolean, warnLimit: number, bannedWords: string[]): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET anti_link = $1, anti_spam = $2, warn_limit = $3, banned_words = $4 WHERE id = 'bot_settings'",
+          [antiLink, antiSpam, warnLimit, bannedWords]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    if (!data.config.autoMod) data.config.autoMod = { antiLink: false, antiSpam: false, warnLimit: 3, bannedWords: [] };
+    data.config.autoMod.antiLink = antiLink;
+    data.config.autoMod.antiSpam = antiSpam;
+    data.config.autoMod.warnLimit = warnLimit;
+    data.config.autoMod.bannedWords = bannedWords;
+    writeLocalFile(data);
+  },
+
+  updateFeaturesConfig: async (webhookUrl: string, autoClaimOnPayment: boolean, greetingMessage: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET webhook_url = $1, auto_claim_on_payment = $2, greeting_message = $3 WHERE id = 'bot_settings'",
+          [webhookUrl, autoClaimOnPayment, greetingMessage]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.webhookUrl = webhookUrl;
+    data.config.autoClaimOnPayment = autoClaimOnPayment;
+    data.config.greetingMessage = greetingMessage;
+    writeLocalFile(data);
+  },
+
+  updateServerConfig: async (guildId: string, ownerId: string, serverManagement: any): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE bot_config SET guild_id = $1, owner_id = $2, server_management = $3 WHERE id = 'bot_settings'",
+          [guildId, ownerId, serverManagement ? JSON.stringify(serverManagement) : null]
+        );
+        return;
+      } catch (err) { console.error('Postgres error:', err); throw err; }
+    }
+    const data = readLocalFile();
+    if (!data.config) data.config = { ...defaultConfig };
+    data.config.guildId = guildId;
+    data.config.ownerId = ownerId;
+    data.config.serverManagement = serverManagement;
     writeLocalFile(data);
   },
 
@@ -576,7 +739,7 @@ export const dbService = {
           };
         }
       } catch (err) {
-        console.error('Postgres getStats failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     return readLocalFile().stats;
@@ -585,19 +748,21 @@ export const dbService = {
   updateStats: async (fields: Partial<BotStats>): Promise<void> => {
     if (pgPool) {
       try {
-        // Construct custom dynamic increment set statements
+        // Construct dynamic update statements safely with parameterized values
         const keys = Object.keys(fields);
         if (keys.length > 0) {
-          const assignments = keys.map((k) => {
+          const assignments = keys.map((k, index) => {
             const dbCol = k.replace(/([A-Z])/g, '_$1').toLowerCase();
-            return `${dbCol} = ${(fields as any)[k]}`; // Numeric values updated
+            return `${dbCol} = $${index + 1}`;
           }).join(', ');
           
-          await pgPool.query(`UPDATE bot_stats SET ${assignments} WHERE id = 'core_stats'`);
+          const values = keys.map(k => (fields as any)[k]);
+          
+          await pgPool.query(`UPDATE bot_stats SET ${assignments} WHERE id = 'core_stats'`, values);
           return;
         }
       } catch (err) {
-        console.error('Postgres updateStats failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
@@ -627,7 +792,7 @@ export const dbService = {
           createdAt: Number(row.created_at)
         }));
       } catch (err) {
-        console.error('Postgres getOrders failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     return readLocalFile().orders;
@@ -645,7 +810,7 @@ export const dbService = {
         });
         return;
       } catch (err) {
-        console.error('Postgres saveOrder failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
@@ -672,7 +837,7 @@ export const dbService = {
           timestamp: Number(row.timestamp)
         }));
       } catch (err) {
-        console.error('Postgres getModLogs failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     return readLocalFile().modLogs;
@@ -688,11 +853,25 @@ export const dbService = {
         });
         return;
       } catch (err) {
-        console.error('Postgres saveModLog failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
     data.modLogs.unshift(log);
+    writeLocalFile(data);
+  },
+
+  clearModLogs: async (): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query('DELETE FROM mod_logs');
+        return;
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+    const data = readLocalFile();
+    data.modLogs = [];
     writeLocalFile(data);
   },
 
@@ -749,6 +928,12 @@ export const dbService = {
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
               values: [ord.id, ord.productId, ord.productName, ord.price, ord.customerDiscordId || '', ord.customerUsername || '', ord.status, ord.claimedStockItem || '', ord.claimedAt || null, ord.transactionId, ord.createdAt]
             });
+            if (ord.status === 'Success' || ord.status === 'Claimed') {
+              await pgPool.query({
+                text: `INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+                values: [`tx_${ord.id}`, ord.customerDiscordId || '', ord.customerUsername || '', ord.price, 'PURCHASE', `Purchased product: ${ord.productName}`, ord.createdAt]
+              });
+            }
           }
 
           // Seed default mod logs
@@ -762,7 +947,7 @@ export const dbService = {
         }
         return;
       } catch (err) {
-        console.error('Postgres clearAllData failed:', err);
+        console.error('Postgres error:', err); throw err;
       }
     }
     const data = readLocalFile();
@@ -771,6 +956,7 @@ export const dbService = {
       data.orders = [];
       data.commands = [];
       data.modLogs = [];
+      data.users = [];
       data.stats = {
         totalRevenue: 0,
         totalOrders: 0,
@@ -784,8 +970,416 @@ export const dbService = {
       data.orders = [...defaultOrders];
       data.commands = [...defaultCommands];
       data.modLogs = [...defaultModLogs];
+      data.users = [];
       data.stats = { ...defaultStats };
     }
     writeLocalFile(data);
+  },
+
+  processPurchase: async (userId: string, username: string, productId: string, qty: number, totalCost: number): Promise<{ success: boolean; stockItems?: string[]; error?: string; transactionId?: string; newBalance?: number }> => {
+    if (!pgPool) {
+      return { success: false, error: "Database not connected. PostgreSQL is required for safe transactions." };
+    }
+
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Lock the user row and check balance
+      const userRes = await client.query('SELECT balance FROM users WHERE discord_id = $1 FOR UPDATE', [userId]);
+      if (userRes.rows.length === 0) {
+        throw new Error("User not found");
+      }
+      const currentBalance = userRes.rows[0].balance;
+      if (currentBalance < totalCost) {
+        throw new Error("Saldo tidak mencukupi");
+      }
+
+      // 2. Lock the product row, check stock and perform atomic update
+      const productRes = await client.query(`
+        WITH old_data AS (
+          SELECT name, stock[1:$1] AS claimed_items, array_length(stock, 1) AS stock_len
+          FROM products 
+          WHERE id = $2 FOR UPDATE
+        )
+        UPDATE products 
+        SET stock = stock[($1 + 1):array_upper(stock, 1)] 
+        WHERE id = $2 AND (SELECT stock_len FROM old_data) >= $1
+        RETURNING (SELECT name FROM old_data) AS name, (SELECT claimed_items FROM old_data) AS claimed_items;
+      `, [qty, productId]);
+
+      if (productRes.rows.length === 0) {
+        throw new Error("Produk tidak ditemukan atau stok tidak cukup. Silahkan kurangi jumlah atau pilih produk lain.");
+      }
+      
+      const product = productRes.rows[0];
+      const claimedStockItems = product.claimed_items || [];
+      if (claimedStockItems.length < qty) {
+        throw new Error("Stok produk tidak cukup. Silahkan kurangi jumlah atau pilih produk lain.");
+      }
+
+      // 5. Update User Balance
+      const newBalance = currentBalance - totalCost;
+      await client.query('UPDATE users SET balance = $1 WHERE discord_id = $2', [newBalance, userId]);
+
+      // 6. Record Transaction
+      const txId = `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await client.query(`
+        INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [txId, userId, username, totalCost, 'PURCHASE', `Pembelian produk: ${qty}x ${product.name}`, Date.now()]);
+
+      // 6.5 Record Purchased Items for Delivery Recovery
+      await client.query(`
+        INSERT INTO purchased_items (transaction_id, user_id, product_name, items, delivery_status)
+        VALUES ($1, $2, $3, $4, 'PENDING_DELIVERY')
+      `, [txId, userId, product.name, JSON.stringify(claimedStockItems)]);
+
+      // 7. Update Stats (Optional, increment orders)
+      await client.query(`
+        UPDATE bot_stats SET 
+        total_orders = total_orders + 1,
+        total_revenue = total_revenue + $1
+        WHERE id = 'core_stats'
+      `, [totalCost]);
+
+      await client.query('COMMIT');
+
+      return { success: true, stockItems: claimedStockItems, transactionId: txId, newBalance };
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      console.error('Purchase transaction failed:', err);
+      return { success: false, error: err.message || "Gagal memproses pembelian" };
+    } finally {
+      client.release();
+    }
+  },
+
+  processTopup: async (messageId: string, accountName: string, amount: number): Promise<{ success: boolean; error?: string; userId?: string }> => {
+    if (!pgPool) return { success: false, error: "Database not connected." };
+    
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      const checkRes = await client.query('SELECT message_id FROM processed_webhooks WHERE message_id = $1 FOR UPDATE', [messageId]);
+      if (checkRes.rows.length > 0) {
+        throw new Error("Message already processed");
+      }
+      
+      await client.query('INSERT INTO processed_webhooks (message_id, processed_at) VALUES ($1, $2)', [messageId, Date.now()]);
+      
+      const userRes = await client.query('SELECT discord_id, balance FROM users WHERE LOWER(account_name) = LOWER($1) FOR UPDATE', [accountName]);
+      if (userRes.rows.length === 0) {
+        throw new Error(`User with account name **${accountName}** not found`);
+      }
+      
+      const user = userRes.rows[0];
+      const newBalance = user.balance + amount;
+      
+      await client.query('UPDATE users SET balance = $1 WHERE discord_id = $2', [newBalance, user.discord_id]);
+      
+      const txId = `topup_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await client.query(`
+        INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [txId, user.discord_id, accountName, amount, 'TOPUP', `Topup via Saweria: Rp ${amount.toLocaleString('id-ID')}`, Date.now()]);
+      
+      await client.query('COMMIT');
+      return { success: true, userId: user.discord_id };
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      console.error('Topup transaction failed:', err);
+      return { success: false, error: err.message };
+    } finally {
+      client.release();
+    }
+  },
+
+  processClaim: async (orderId: string, userId: string, username: string): Promise<{ success: boolean; claimItem?: string; orderDetails?: Order; error?: string }> => {
+    if (!pgPool) {
+      return { success: false, error: "Database not connected. PostgreSQL is required for safe transactions." };
+    }
+
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Lock the order row
+      const orderRes = await client.query('SELECT * FROM orders WHERE LOWER(id) = LOWER($1) FOR UPDATE', [orderId]);
+      if (orderRes.rows.length === 0) {
+        throw new Error(`ID Pemesanan \`${orderId}\` tidak terdaftar atau nihil dalam sistem.`);
+      }
+      
+      const orderRow = orderRes.rows[0];
+      if (orderRow.status === 'Claimed') {
+        if (orderRow.customer_discord_id && orderRow.customer_discord_id !== userId) {
+          throw new Error(`Pesanan \`${orderId}\` sudah diklaim oleh pengguna lain.`);
+        }
+        throw new Error(`Pesanan \`${orderId}\` sudah pernah diklaim sebelumnya. Silakan cek riwayat DM Anda dari bot, atau hubungi Admin jika Anda kehilangan produk.`);
+      }
+
+      // 2. Lock the product row and perform atomic stock update
+      const productRes = await client.query(`
+        WITH old_data AS (
+          SELECT stock[1:1] AS claimed_items, array_length(stock, 1) AS stock_len
+          FROM products 
+          WHERE id = $1 FOR UPDATE
+        )
+        UPDATE products 
+        SET stock = stock[2:array_upper(stock, 1)] 
+        WHERE id = $1 AND (SELECT stock_len FROM old_data) > 0
+        RETURNING (SELECT claimed_items FROM old_data) AS claimed_items;
+      `, [orderRow.product_id]);
+
+      if (productRes.rows.length === 0) {
+        throw new Error('Produk untuk pemesanan ini tidak ditemukan atau stok sementara habis. Silakan infokan ke owner/admin toko.');
+      }
+      
+      const claimedItems = productRes.rows[0].claimed_items || [];
+      if (claimedItems.length === 0) {
+        throw new Error('Stok produk ini sementara habis. Silakan infokan ke owner/admin toko.');
+      }
+
+      const claimItem = claimedItems[0];
+
+      // 5. Update Order
+      const now = Date.now();
+      await client.query(`
+        UPDATE orders 
+        SET status = 'Claimed', claimed_stock_item = $1, claimed_at = $2, customer_discord_id = $3, customer_username = $4
+        WHERE id = $5
+      `, [claimItem, now, userId, username, orderRow.id]);
+
+      // 6. Update Stats
+      await client.query(`
+        UPDATE bot_stats SET 
+        total_orders = total_orders + 1,
+        total_revenue = total_revenue + $1
+        WHERE id = 'core_stats'
+      `, [orderRow.price]);
+
+      await client.query('COMMIT');
+
+      const orderDetails: Order = {
+        id: orderRow.id,
+        productId: orderRow.product_id,
+        productName: orderRow.product_name,
+        price: orderRow.price,
+        status: 'Claimed',
+        claimedStockItem: claimItem,
+        claimedAt: now,
+        customerDiscordId: userId,
+        customerUsername: username,
+        transactionId: orderRow.transaction_id,
+        createdAt: Number(orderRow.created_at)
+      };
+
+      return { success: true, claimItem, orderDetails };
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      console.error('Claim transaction failed:', err);
+      return { success: false, error: err.message };
+    } finally {
+      client.release();
+    }
+  },
+
+  refundPurchase: async (userId: string, productId: string, stockItems: string[], totalCost: number, originalTxId?: string): Promise<void> => {
+    if (!pgPool) return;
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Update User Balance (Lock users first)
+      await client.query('UPDATE users SET balance = balance + $1 WHERE discord_id = $2', [totalCost, userId]);
+
+      // Update Product Stock (Lock products second)
+      await client.query(`
+        UPDATE products 
+        SET stock = array_cat($1::text[], stock) 
+        WHERE id = $2
+      `, [stockItems, productId]);
+      
+      // Refund log
+      const txId = `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await client.query(`
+        INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [txId, userId, 'System', totalCost, 'REFUND', `Pengembalian dana produk gagal DM`, Date.now()]);
+      
+      // Update delivery status of failed order to prevent recovery loops
+      if (originalTxId) {
+        await client.query(`
+          UPDATE purchased_items 
+          SET delivery_status = 'REFUNDED' 
+          WHERE transaction_id = $1
+        `, [originalTxId]);
+      } else {
+        await client.query(`
+          UPDATE purchased_items 
+          SET delivery_status = 'REFUNDED' 
+          WHERE user_id = $1 AND delivery_status = 'PENDING_DELIVERY' AND product_name = (SELECT name FROM products WHERE id = $2)
+        `, [userId, productId]);
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Refund transaction failed:', err);
+    } finally {
+      client.release();
+    }
+  },
+
+  getUsers: async (): Promise<any[]> => {
+    if (pgPool) {
+      try {
+        const res = await pgPool.query('SELECT * FROM users ORDER BY created_at DESC');
+        return res.rows.map(row => ({
+          discordId: row.discord_id,
+          accountName: row.account_name,
+          balance: row.balance,
+          createdAt: Number(row.created_at)
+        }));
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+    const data = readLocalFile();
+    return data.users || [];
+  },
+
+  getUserByDiscordId: async (discordId: string): Promise<any | null> => {
+    if (pgPool) {
+      try {
+        const res = await pgPool.query('SELECT * FROM users WHERE discord_id = $1', [discordId]);
+        if (res.rows.length > 0) {
+          return {
+            discordId: res.rows[0].discord_id,
+            accountName: res.rows[0].account_name,
+            balance: res.rows[0].balance,
+            createdAt: Number(res.rows[0].created_at)
+          };
+        }
+        return null;
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+    const data = readLocalFile();
+    return data.users?.find((u: any) => u.discordId === discordId) || null;
+  },
+
+  registerUser: async (discordId: string, accountName: string): Promise<void> => {
+    const createdAt = Date.now();
+    if (pgPool) {
+      try {
+        await pgPool.query(`
+          INSERT INTO users (discord_id, account_name, balance, created_at)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (discord_id) DO UPDATE SET account_name = EXCLUDED.account_name
+        `, [discordId, accountName, 0, createdAt]);
+        return;
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+        throw err;
+      }
+    }
+    const data = readLocalFile();
+    if (!data.users) data.users = [];
+    const idx = data.users.findIndex((u: any) => u.discordId === discordId);
+    if (idx >= 0) {
+      data.users[idx].accountName = accountName;
+    } else {
+      data.users.push({ discordId, accountName, balance: 0, createdAt });
+    }
+    writeLocalFile(data);
+  },
+
+  updateUserBalance: async (discordId: string, amount: number): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query('UPDATE users SET balance = balance + $1 WHERE discord_id = $2', [amount, discordId]);
+        return;
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+    const data = readLocalFile();
+    if (!data.users) return;
+    const user = data.users.find((u: any) => u.discordId === discordId);
+    if (user) {
+      user.balance += amount;
+      writeLocalFile(data);
+    }
+  },
+
+  getTransactions: async (): Promise<any[]> => {
+    if (pgPool) {
+      try {
+        const res = await pgPool.query('SELECT * FROM transactions ORDER BY timestamp DESC LIMIT 100');
+        return res.rows.map(r => ({
+          id: r.id,
+          userId: r.user_id,
+          username: r.username,
+          amount: r.amount,
+          type: r.type,
+          description: r.description,
+          timestamp: Number(r.timestamp)
+        }));
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+    const data = readLocalFile();
+    return (data.transactions || []).sort((a: any, b: any) => b.timestamp - a.timestamp);
+  },
+
+  saveTransaction: async (tx: any): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(`
+          INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (id) DO NOTHING
+        `, [tx.id, tx.userId, tx.username, tx.amount, tx.type, tx.description, tx.timestamp]);
+        return;
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+    const data = readLocalFile();
+    if (!data.transactions) data.transactions = [];
+    data.transactions.push(tx);
+    writeLocalFile(data);
+  },
+
+  markDeliverySuccess: async (transactionId: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query("UPDATE purchased_items SET delivery_status = 'DELIVERED' WHERE transaction_id = $1", [transactionId]);
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+      }
+    }
+  },
+
+  getPendingDeliveries: async (): Promise<{ transactionId: string; userId: string; productName: string; items: string[] }[]> => {
+    if (pgPool) {
+      try {
+        const res = await pgPool.query("SELECT transaction_id, user_id, product_name, items FROM purchased_items WHERE delivery_status = 'PENDING_DELIVERY'");
+        return res.rows.map(row => ({
+          transactionId: row.transaction_id,
+          userId: row.user_id,
+          productName: row.product_name,
+          items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items
+        }));
+      } catch (err) {
+        console.error('Postgres error:', err); throw err;
+        return [];
+      }
+    }
+    return [];
   }
 };

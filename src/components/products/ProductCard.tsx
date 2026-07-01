@@ -9,7 +9,7 @@ interface ProductCardProps {
   onManageStock: (prod: Product) => void;
 }
 
-export default function ProductCard({ prod, onEdit, onDelete, onManageStock }: ProductCardProps) {
+export default function ProductCard({ prod, onEdit, onDelete, onManageStock }: ProductCardProps & { key?: React.Key }) {
   const stockCount = prod.stock?.length || 0;
   let stockBadgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
   let stockStatus = 'Habis (Out of Stock)';
@@ -42,7 +42,7 @@ export default function ProductCard({ prod, onEdit, onDelete, onManageStock }: P
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80" />
         <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded-md text-[10px] font-bold text-slate-300 font-mono flex items-center border border-slate-800/80">
           <Hash className="w-3 h-3 text-indigo-400" />
-          <span>{prod.id}</span>
+          <span>{prod.code || prod.id}</span>
         </div>
       </div>
 

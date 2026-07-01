@@ -9,11 +9,13 @@ interface WebhookSettingsProps {
   setGreetingMessage: (val: string) => void;
   onTriggerWebhookTest: () => Promise<boolean>;
   setIsDirty: (val: boolean) => void;
+  onUpdatePartialConfig?: (section: string, data: Partial<BotConfig>) => Promise<void>;
 }
 
-export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMessage, setGreetingMessage, onTriggerWebhookTest, setIsDirty }: WebhookSettingsProps) {
+export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMessage, setGreetingMessage, onTriggerWebhookTest, setIsDirty, onUpdatePartialConfig }: WebhookSettingsProps) {
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [webhookResult, setWebhookResult] = useState<'success' | 'err' | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const handleTestWebhook = async () => {
     setTestingWebhook(true);
@@ -28,16 +30,32 @@ export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMes
     }
   };
 
+  const handleSave = async () => {
+    if (!onUpdatePartialConfig) return;
+    setSaving(true);
+    await onUpdatePartialConfig('features', { webhookUrl, greetingMessage });
+    setSaving(false);
+  };
+
   return (
     <div className="bg-[#0f1523] border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
-      <div className="flex items-center gap-3 border-b border-slate-800/50 pb-4 mb-2">
-        <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20 shadow-inner">
-          <Rss className="w-5 h-5" />
+      <div className="flex items-center justify-between border-b border-slate-800/50 pb-4 mb-2">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20 shadow-inner">
+            <Rss className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-200">Webhook Logging & Web Integrations</h2>
+            <p className="text-[11px] text-slate-400">Hubungkan bot ke channel log Discord transaksi secara eksternal web-dashboard.</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-base font-bold text-slate-200">Webhook Logging & Web Integrations</h2>
-          <p className="text-[11px] text-slate-400">Hubungkan bot ke channel log Discord transaksi secara eksternal web-dashboard.</p>
-        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save Webhook Settings'}
+        </button>
       </div>
 
       <div className="space-y-5">

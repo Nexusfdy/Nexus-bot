@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Activity, MessageSquare, Key, Lock } from 'lucide-react';
+import { ShieldCheck, Activity, MessageSquare, Key, Lock, BarChart } from 'lucide-react';
 import { BotConfig } from '../../types';
 
 interface BotProfileFeaturesProps {
@@ -32,7 +32,7 @@ export default function BotProfileFeatures({ config, botToken }: BotProfileFeatu
             <Activity className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-1.5">Status Rich Presence (Aktivitas)</h3>
+            <h3 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-1.5">Status Rich Presence</h3>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs text-slate-400 font-medium whitespace-nowrap">
                 Sedang <span className="text-indigo-400 font-bold">{config.statusType}</span>
@@ -45,16 +45,32 @@ export default function BotProfileFeatures({ config, botToken }: BotProfileFeatu
         </div>
       </div>
 
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors md:col-span-2">
+      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+        <div className="flex items-start gap-4">
+          <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-xl border border-sky-500/20 shrink-0">
+            <BarChart className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-1">Channel Live Stock</h3>
+            {config.liveStockChannel ? (
+              <p className="text-sm font-bold text-sky-400">#{config.liveStockChannel}</p>
+            ) : (
+              <p className="text-sm font-bold text-slate-500">Tidak Aktif</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
         <div className="flex items-start gap-4">
           <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20 shrink-0">
             <MessageSquare className="w-5 h-5" />
           </div>
           <div className="w-full">
-            <h3 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2">Pesan Sapaan Otomatis (Selamat Datang)</h3>
-            <div className="bg-slate-900 border-l-2 border-blue-500 p-3 rounded-r-xl">
-              <p className="text-sm font-medium text-slate-300 italic">
-                "{config.greetingMessage || "Tidak ada pesan sapaan"}"
+            <h3 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest mb-2">Pesan Sapaan</h3>
+            <div className="bg-slate-900 border-l-2 border-blue-500 p-2 rounded-r-xl truncate max-w-[180px]">
+              <p className="text-xs font-medium text-slate-300 italic truncate">
+                "{config.greetingMessage || "Tidak ada pesan"}"
               </p>
             </div>
           </div>

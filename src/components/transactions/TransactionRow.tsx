@@ -7,9 +7,9 @@ interface TransactionRowProps {
   onMarkSuccess?: (orderId: string) => Promise<void>;
 }
 
-export default function TransactionRow({ ord, formatIDR, onMarkSuccess }: TransactionRowProps) {
+export default function TransactionRow({ ord, formatIDR, onMarkSuccess }: TransactionRowProps & { key?: React.Key }) {
   let statusBadge = '';
-  let badgeText = ord.status;
+  let badgeText: string = ord.status;
 
   if (ord.status === 'Claimed') {
     statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15';
@@ -24,34 +24,35 @@ export default function TransactionRow({ ord, formatIDR, onMarkSuccess }: Transa
 
   return (
     <tr className="hover:bg-slate-950/20 transition-all">
-      {/* Order ID */}
-      <td className="py-4 px-6 font-mono text-slate-300 font-bold">
-        {ord.id}
+      {/* Order ID & TX ID */}
+      <td className="py-4 px-6 font-mono text-slate-300 font-bold whitespace-nowrap">
+        <div>{ord.id}</div>
+        <div className="text-[10px] text-slate-500 font-normal mt-0.5" title="Transaction ID">{ord.transactionId}</div>
       </td>
       {/* User info */}
-      <td className="py-4 px-6 font-semibold text-slate-200">
+      <td className="py-4 px-6 font-semibold text-slate-200 whitespace-nowrap">
         @{ord.customerUsername}
       </td>
       {/* Product */}
-      <td className="py-4 px-6 text-indigo-400 font-medium font-display">
+      <td className="py-4 px-6 text-indigo-400 font-medium font-display whitespace-nowrap">
         {ord.productName}
       </td>
       {/* Price */}
-      <td className="py-4 px-6 font-semibold text-slate-300 font-mono">
+      <td className="py-4 px-6 font-semibold text-slate-300 font-mono whitespace-nowrap">
         {formatIDR(ord.price)}
       </td>
       {/* Status */}
-      <td className="py-4 px-6">
+      <td className="py-4 px-6 whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge}`}>
           {badgeText}
         </span>
       </td>
       {/* Created At */}
-      <td className="py-4 px-6 text-slate-500 font-mono text-[10px]">
+      <td className="py-4 px-6 text-slate-500 font-mono text-[10px] whitespace-nowrap">
         {new Date(ord.createdAt).toLocaleString('id-ID')}
       </td>
       {/* Key items */}
-      <td className="py-4 px-6 font-mono text-slate-400 max-w-[180px] truncate">
+      <td className="py-4 px-6 font-mono text-slate-400 max-w-[180px] truncate whitespace-nowrap">
         {ord.claimedStockItem ? (
           <span className="bg-slate-950/80 p-1 px-2 rounded-md text-[10px] text-slate-300 font-mono border border-slate-800">
             {ord.claimedStockItem}

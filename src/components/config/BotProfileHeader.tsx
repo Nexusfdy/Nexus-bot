@@ -1,5 +1,6 @@
 import React from 'react';
 import { Settings, Activity } from 'lucide-react';
+import { fetchWithAuth as fetch } from '../../lib/api';
 
 interface BotProfileHeaderProps {
   setIsEditing: (editing: boolean) => void;

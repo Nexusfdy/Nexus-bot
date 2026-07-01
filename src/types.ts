@@ -1,5 +1,23 @@
+export interface Transaction {
+  id: string;
+  userId: string;
+  username: string;
+  amount: number;
+  type: 'DEPOSIT' | 'PURCHASE' | 'REFUND';
+  description: string;
+  timestamp: number;
+}
+
+export interface User {
+  discordId: string;
+  accountName: string;
+  balance: number;
+  createdAt: number;
+}
+
 export interface Product {
   id: string;
+  code?: string;
   name: string;
   price: number;
   description: string;
@@ -17,7 +35,7 @@ export interface Order {
   price: number;
   customerDiscordId: string;
   customerUsername: string;
-  status: 'Pending' | 'Success' | 'Claimed';
+  status: 'Pending' | 'Success' | 'Claimed' | 'Failed';
   claimedStockItem?: string; // The license key delivered
   claimedAt?: number;
   transactionId: string;
@@ -45,10 +63,20 @@ export interface BotConfig {
   statusText: string;
   statusType: 'PLAYING' | 'STREAMING' | 'LISTENING' | 'WATCHING';
   webhookUrl: string;
+  guildId?: string; // New field for active Discord Server
+  depositWebhookChannelId?: string; // New field for Saweria Topup
   autoClaimOnPayment: boolean;
   greetingMessage: string;
+  liveStockChannel?: string; // New field
+  liveStockMessageId?: string; // The ID of the live stock message
   autoMod: AutoModSettings;
   botToken?: string;
+  ownerId?: string; // Discord ID of the bot owner
+  serverManagement?: {
+    welcomeChannelId?: string;
+    logChannelId?: string;
+    leaveChannelId?: string;
+  };
 }
 
 export interface ModLog {

@@ -26,11 +26,12 @@ export default function DiscordSimulator({
   const channels = [
     { id: 'rules', name: 'rules-rules', cat: 'INFORMASI' },
     { id: 'bot-order', name: 'bot-order', cat: 'AUTO-STORE' },
+    { id: 'live-stock', name: 'live-stock', cat: 'AUTO-STORE' },
     { id: 'chat-bebas', name: 'chat-bebas', cat: 'KOMUNITAS' },
     { id: 'moderation-logs', name: 'moderation-logs', cat: 'KEAMANAN' },
   ];
 
-  const [activeChannel, setActiveChannel] = useState('bot-order');
+  const [activeChannel, setActiveChannel] = useState('live-stock');
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({
     'rules': '', 'bot-order': '', 'chat-bebas': '', 'moderation-logs': ''
   });

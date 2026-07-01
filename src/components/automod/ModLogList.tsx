@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, ShieldAlert, Hash } from 'lucide-react';
+import { Clock, ShieldAlert, Hash, ShieldCheck } from 'lucide-react';
 import { ModLog } from '../../types';
 
 interface ModLogListProps {

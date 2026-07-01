@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Product, CustomCommand, BotConfig, BotStats, Order, ModLog, DiscordBotUser } from "../types";
+import { safeFetchJsonWithAuth } from "../lib/api";
 
 export function useBotData() {
   const [botOnline, setBotOnline] = useState(false);
@@ -7,6 +8,7 @@ export function useBotData() {
   const [botError, setBotError] = useState<string | null>(null);
   const [botUser, setBotUser] = useState<DiscordBotUser | null>(null);
   const [dbEngine, setDbEngine] = useState<string>("Local JSON File");
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [commands, setCommands] = useState<CustomCommand[]>([]);
@@ -36,35 +38,30 @@ export function useBotData() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [modLogs, setModLogs] = useState<ModLog[]>([]);
 
-  const safeFetchJson = async (url: string) => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) return null;
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) return null;
-      return await res.json();
-    } catch (err) {
-      return null;
-    }
-  };
-
   const refreshAllData = async () => {
     const [prodData, cmdData, configData, statsData, ordersData, modData, statusData] = await Promise.all([
-      safeFetchJson('/api/products'),
-      safeFetchJson('/api/commands'),
-      safeFetchJson('/api/config'),
-      safeFetchJson('/api/stats'),
-      safeFetchJson('/api/orders'),
-      safeFetchJson('/api/mod_logs'),
-      safeFetchJson('/api/bot/status')
+      safeFetchJsonWithAuth('/api/products'),
+      safeFetchJsonWithAuth('/api/commands'),
+      safeFetchJsonWithAuth('/api/config'),
+      safeFetchJsonWithAuth('/api/stats'),
+      safeFetchJsonWithAuth('/api/orders'),
+      safeFetchJsonWithAuth('/api/mod_logs'),
+      safeFetchJsonWithAuth('/api/bot/status')
     ]);
 
-    if (prodData) setProducts(prodData);
-    if (cmdData) setCommands(cmdData);
-    if (configData) setConfig(configData);
-    if (statsData) setStats(statsData);
-    if (ordersData) setOrders(ordersData);
-    if (modData) setModLogs(modData);
+    if (Array.isArray(prodData)) setProducts(prodData);
+    if (Array.isArray(cmdData)) setCommands(cmdData);
+    if (configData && !Array.isArray(configData)) {
+      setConfig(configData);
+    }
+    if (statsData && !Array.isArray(statsData)) {
+      if (statusData && statusData.guildsCount !== undefined) {
+        statsData.activeServers = statusData.guildsCount;
+      }
+      setStats(statsData);
+    }
+    if (Array.isArray(ordersData)) setOrders(ordersData);
+    if (Array.isArray(modData)) setModLogs(modData);
 
     if (statusData) {
       setBotStatus(statusData.status);
@@ -81,11 +78,13 @@ export function useBotData() {
         setBotUser(null);
       }
     }
+    
+    setIsDataLoaded(true);
   };
 
   useEffect(() => {
     refreshAllData();
-    const interval = setInterval(refreshAllData, 3500);
+    const interval = setInterval(refreshAllData, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -93,6 +92,6 @@ export function useBotData() {
     botOnline, botStatus, botError, botUser, dbEngine,
     products, setProducts, commands, setCommands,
     config, setConfig, stats, setStats, orders, setOrders,
-    modLogs, setModLogs, refreshAllData
+    modLogs, setModLogs, refreshAllData, isDataLoaded
   };
 }

@@ -46,7 +46,7 @@ export default function TransactionsTable({ orders, onMarkSuccess }: Transaction
         <table className="w-full min-w-[750px] text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-slate-850 text-slate-500 uppercase font-mono tracking-wider">
-              <th className="py-4 px-6">ID Transaksi</th>
+              <th className="py-4 px-6">ID Pesanan</th>
               <th className="py-4 px-6">Pelanggan Discord</th>
               <th className="py-4 px-6">Produk digital</th>
               <th className="py-4 px-6">Jumlah Harga</th>

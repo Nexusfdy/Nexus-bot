@@ -1,24 +1,186 @@
-import { Message, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { Message, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, GuildMember } from "discord.js";
 import { dbService } from "../../src/db/db_service.ts";
 import { ModLog } from "../../src/types.ts";
 import { discordState } from "../discordState.ts";
+import { updateLiveStock } from "./liveStock.ts";
+
+const activeTimeouts = new Set<NodeJS.Timeout>();
+
+const userStrikes = new Map<string, { count: number, resetAt: number }>();
+const userSpamWindow = new Map<string, number[]>();
+
+let gcCounter = 0;
+const GC_THRESHOLD = 500;
+
+const runGarbageCollection = () => {
+  const now = Date.now();
+  for (const [userId, strikes] of userStrikes.entries()) {
+    if (strikes.resetAt < now) {
+      userStrikes.delete(userId);
+    }
+  }
+  for (const [userId, msgs] of userSpamWindow.entries()) {
+    const validMsgs = msgs.filter(t => now - t < 3000);
+    if (validMsgs.length === 0) {
+      userSpamWindow.delete(userId);
+    } else {
+      userSpamWindow.set(userId, validMsgs);
+    }
+  }
+};
+
+export const cleanupMessageHandlerTimeouts = () => {
+  for (const timer of activeTimeouts) {
+    clearTimeout(timer);
+  }
+  activeTimeouts.clear();
+  userStrikes.clear();
+  userSpamWindow.clear();
+};
+
+const handleViolation = async (message: Message, reason: string, warnLimit: number) => {
+  const userId = message.author.id;
+  const username = message.author.username;
+  
+  // Strike Logic with 24-hour expiration
+  let strikes = userStrikes.get(userId);
+  if (!strikes || strikes.resetAt < Date.now()) {
+    strikes = { count: 0, resetAt: Date.now() + 24 * 60 * 60 * 1000 };
+  }
+  strikes.count += 1;
+  userStrikes.set(userId, strikes);
+
+  try {
+    await message.delete().catch(() => {});
+    
+    const warnResponse = await message.channel.send(
+      `⚠️ **Auto-Moderasi**: <@${userId}>, pesan Anda dihapus. Alasan: ${reason}. (Peringatan ${strikes.count}/${warnLimit})`
+    );
+    const timer = setTimeout(() => { 
+      warnResponse.delete().catch(() => {});
+      activeTimeouts.delete(timer);
+    }, 6000);
+    activeTimeouts.add(timer);
+
+    const generatedLogId = "mod-" + Math.random().toString(36).substring(4);
+    const newLog: ModLog = {
+      id: generatedLogId,
+      userId: userId,
+      username: username,
+      action: "DELETE_MESSAGE & STRIKE",
+      reason: reason,
+      timestamp: Date.now()
+    };
+    await dbService.saveModLog(newLog);
+
+    const stats = await dbService.getStats();
+    await dbService.updateStats({ moderationActions: stats.moderationActions + 1 });
+
+    if (strikes.count >= warnLimit) {
+      strikes.count = 0; // reset immediately to prevent duplicate timeout API calls
+      userStrikes.set(userId, strikes);
+
+      if (message.member && message.member.moderatable) {
+        await message.member.timeout(60 * 60 * 1000, `Mencapai limit pelanggaran AutoMod (${warnLimit} peringatan)`);
+        
+        await dbService.saveModLog({
+          id: "mod-" + Math.random().toString(36).substring(4),
+          userId: userId,
+          username: username,
+          action: "TIMEOUT",
+          reason: `AutoMod limit reached (${warnLimit} peringatan)`,
+          timestamp: Date.now()
+        });
+        
+        await message.channel.send(`🚫 **AutoMod Action**: Member **${username}** telah di-timeout karena mengulangi pelanggaran (limit tercapai).`);
+      }
+    }
+  } catch (modErr) {
+    console.error("[Discord Bot] Failed executing auto-mod response action:", modErr);
+  }
+};
 
 export const handleMessageCreate = async (message: Message) => {
+  // Lazy GC check to prevent memory leak
+  gcCounter++;
+  if (gcCounter > GC_THRESHOLD) {
+    runGarbageCollection();
+    gcCounter = 0;
+  }
+
+  const currentConfig = await dbService.getConfig();
+
+  // Saweria Webhook Listener MVP
+  if (message.webhookId && currentConfig.depositWebhookChannelId && message.channel.id === currentConfig.depositWebhookChannelId) {
+    // Saweria Webhook messages contain the donation details usually in an embed or raw text
+    // "Nama Donatur just donated Rp10,000"
+    let contentToParse = message.content || "";
+    if (message.embeds && message.embeds.length > 0) {
+      const embed = message.embeds[0];
+      contentToParse += ` ${embed.title || ""} ${embed.description || ""}`;
+    }
+
+    // Strip markdown bold and italic for easier regex matching
+    contentToParse = contentToParse.replace(/\*/g, '').replace(/_/g, '');
+
+    const saweriaMatch = contentToParse.match(/(.*?)\s+just\s+donated\s+(?:Rp|IDR)\s*([\d.,]+)/i) 
+      || contentToParse.match(/(.*?)\s+telah\s+berdonasi\s+sebesar\s+(?:Rp|IDR)\s*([\d.,]+)/i) 
+      || contentToParse.match(/(.*?)\s+berdonasi\s+(?:Rp|IDR)\s*([\d.,]+)/i);
+
+    if (saweriaMatch) {
+      const donorName = saweriaMatch[1].trim();
+      const amountStr = saweriaMatch[2].replace(/[^\d]/g, ''); // bersihkan titik/koma
+      const amount = parseInt(amountStr, 10);
+      
+      if (!isNaN(amount) && amount > 0) {
+        try {
+          const topupRes = await dbService.processTopup(message.id, donorName, amount);
+          if (topupRes.success) {
+            await message.reply(`✅ **Auto-Topup Success!** Saldo untuk user **${donorName}** (ID: ${topupRes.userId}) telah ditambahkan sebesar **Rp ${amount.toLocaleString('id-ID')}**.`);
+          } else if (topupRes.error === "Message already processed") {
+            // Already processed, ignore
+          } else {
+            await message.reply(`⚠️ **Auto-Topup Failed!** Gagal menambahkan saldo untuk **${donorName}**: ${topupRes.error}`);
+          }
+        } catch (err: any) {
+          console.error("Failed to process Saweria Topup:", err);
+        }
+      }
+    }
+    return; // Don't process command if it's a webhook
+  }
+
   if (message.author.bot) return;
 
   const content = message.content?.trim() || "";
   if (!content) return; 
 
-  const currentConfig = await dbService.getConfig();
   const prefix = currentConfig.prefix || "!";
 
   // ---- AUTO MODERATION LAYER ----
   const autoMod = currentConfig.autoMod;
-  if (autoMod) {
+  const isOwner = currentConfig.ownerId && message.author.id === currentConfig.ownerId;
+  
+  if (autoMod && !isOwner) {
     let violated = false;
     let violationReason = "";
 
-    if (autoMod.antiLink) {
+    // 1. Anti-Spam Check (Sliding Window 3 seconds, max 5 messages)
+    if (autoMod.antiSpam) {
+      const now = Date.now();
+      const spamWindow = 3000;
+      let userMsgs = userSpamWindow.get(message.author.id) || [];
+      userMsgs = userMsgs.filter(t => now - t < spamWindow);
+      userMsgs.push(now);
+      userSpamWindow.set(message.author.id, userMsgs);
+
+      if (userMsgs.length > 5) {
+        violated = true;
+        violationReason = "Spamming (mengirim terlalu banyak pesan dalam waktu singkat)";
+      }
+    }
+
+    if (autoMod.antiLink && !violated) {
       const urlRegex = /(https?:\/\/[^\s]+)/gi;
       if (urlRegex.test(content)) {
         violated = true;
@@ -38,29 +200,7 @@ export const handleMessageCreate = async (message: Message) => {
     }
 
     if (violated) {
-      try {
-        await message.delete();
-        const warnResponse = await message.channel.send(
-          `⚠️ **Auto-Moderasi Nexus**: @${message.author.username}, pesan Anda dihapus. Alasan: ${violationReason}.`
-        );
-        setTimeout(() => { warnResponse.delete().catch(() => {}); }, 6000);
-
-        const generatedLogId = "mod-" + Math.random().toString(36).substring(4);
-        const newLog: ModLog = {
-          id: generatedLogId,
-          userId: message.author.id,
-          username: message.author.username,
-          action: "DELETE_MESSAGE",
-          reason: violationReason,
-          timestamp: Date.now()
-        };
-        await dbService.saveModLog(newLog);
-
-        const stats = await dbService.getStats();
-        await dbService.updateStats({ moderationActions: stats.moderationActions + 1 });
-      } catch (modErr) {
-        console.error("[Discord Bot] Failed executing auto-mod response action:", modErr);
-      }
+      await handleViolation(message, violationReason, autoMod.warnLimit || 3);
       return;
     }
   }
@@ -78,58 +218,27 @@ export const handleMessageCreate = async (message: Message) => {
       }
 
       try {
-        const orders = await dbService.getOrders();
-        const foundOrder = orders.find(o => o.id.toLowerCase() === orderId.toLowerCase());
+        const claimRes = await dbService.processClaim(orderId, message.author.id, message.author.username);
 
-        if (!foundOrder) {
-          await message.reply(`❌ **Claim Error**: ID Pemesanan \`${orderId}\` tidak terdaftar atau nihil dalam sistem.`);
+        if (!claimRes.success || !claimRes.claimItem || !claimRes.orderDetails) {
+          await message.reply(`❌ **Claim Error**: ${claimRes.error || "Gagal memproses klaim."}`);
           return;
         }
 
-        if (foundOrder.status === "Claimed") {
-          await message.reply(`⚠️ **Klaim redundansi**: Pesanan \`${orderId}\` sudah pernah diklaim sebelumnya.\nBarang claim: \`${foundOrder.claimedStockItem || "No Key"}\``);
-          return;
-        }
-
-        const products = await dbService.getProducts();
-        const product = products.find(p => p.id === foundOrder.productId);
-
-        if (!product) {
-          await message.reply("❌ **Error**: Produk untuk pemesanan ini sudah dihapus dari inventory admin.");
-          return;
-        }
-
-        if (!product.stock || product.stock.length === 0) {
-          await message.reply("❌ **Stok Kosong**: Mohon Maaf, stok produk ini sementara habis. Silakan infokan ke owner/admin toko.");
-          return;
-        }
-
-        const claimItem = product.stock[0];
-        const remainingStock = product.stock.slice(1);
-        
-        product.stock = remainingStock;
-        await dbService.saveProduct(product);
-
-        foundOrder.status = "Claimed";
-        foundOrder.claimedStockItem = claimItem;
-        foundOrder.claimedAt = Date.now();
-        foundOrder.customerDiscordId = message.author.id;
-        foundOrder.customerUsername = message.author.username;
-        await dbService.saveOrder(foundOrder);
+        const claimItem = claimRes.claimItem;
+        const foundOrder = claimRes.orderDetails;
 
         try {
           const dmChannel = await message.author.createDM();
           await dmChannel.send(`🎉 **TERIMA KASIH TELAH BERBELANJA DI NEXUS CORESHOP!**\n\n📌 **Detail Pembelian**:\n- **No Order ID**: \`${foundOrder.id}\`\n- **Nama Produk**: **${foundOrder.productName}**\n- **Barang Digital / Lisensi Anda**:\n\`\`\`\n${claimItem}\n\`\`\`\n*Harapan kami Anda menyukai produk kami. Jangan sungkan menghubungi representatif developer kami jika ada kendala.*`);
           await message.reply(`✅ **Claim berhasil!** Berkas digital Anda berhasil dikirim ke personal messages DM Discord @${message.author.username}. Harap periksa Inbox DM Anda!`);
         } catch (dmErr) {
-          await message.reply(`✅ **Klaim Sukses!** Berkas digital Anda: \`${claimItem}\` (Harap segera salin, dilarang disebarkan).`);
+          await message.reply(`✅ **Klaim berhasil diproses!** Namun, bot gagal mengirim produk ke DM karena pengaturan privasi Discord Anda.\nSilakan **Izinkan Pesan Langsung (Allow Direct Messages)** dari server ini, lalu hubungi Admin untuk meminta pengiriman ulang produk Anda.`);
         }
-
-        const stats = await dbService.getStats();
-        await dbService.updateStats({
-          totalRevenue: stats.totalRevenue + foundOrder.price,
-          totalOrders: stats.totalOrders + 1
-        });
+        
+        if (discordState.client) {
+            updateLiveStock(discordState.client);
+        }
 
       } catch (claimErr: any) {
         console.error("[Discord Bot] Error claiming item:", claimErr);

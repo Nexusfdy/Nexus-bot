@@ -6,7 +6,7 @@ interface MessageItemProps {
   botUser?: any;
 }
 
-export default function MessageItem({ msg, botUser }: MessageItemProps) {
+export default function MessageItem({ msg, botUser }: MessageItemProps & { key?: React.Key }) {
   const displayName = (msg.author.isBot && botUser?.tag) ? botUser.tag : msg.author.username;
 
   return (

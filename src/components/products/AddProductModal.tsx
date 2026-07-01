@@ -10,6 +10,7 @@ interface AddProductModalProps {
 
 export default function AddProductModal({ onClose, onSave, editProduct }: AddProductModalProps) {
   const [name, setName] = useState(editProduct?.name || '');
+  const [code, setCode] = useState(editProduct?.code || '');
   const [price, setPrice] = useState<number | ''>(editProduct?.price || '');
   const [description, setDescription] = useState(editProduct?.description || '');
   const [type, setType] = useState<'License Key' | 'Download Link' | 'Accounts'>(editProduct?.type || 'License Key');
@@ -23,7 +24,7 @@ export default function AddProductModal({ onClose, onSave, editProduct }: AddPro
     const initialStock = stockText ? stockText.split('\n').map(s => s.trim()).filter(s => s.length > 0) : [];
     
     await onSave({
-      name, price: Number(price), description, type, category, imageUrl: imageUrl || undefined, stock: editProduct ? undefined : initialStock
+      name, code, price: Number(price), description, type, category, imageUrl: imageUrl || undefined, stock: editProduct ? editProduct.stock : initialStock
     });
   };
 
@@ -43,9 +44,14 @@ export default function AddProductModal({ onClose, onSave, editProduct }: AddPro
         <div className="p-6 overflow-y-auto flex-1">
           <form id="product-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="space-y-1.5 md:col-span-2">
+              <div className="space-y-1.5 md:col-span-1">
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest pl-1">Judul / Nama Item *</label>
                 <input required type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Contoh: Nitro Basic 1 Bulan" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500 transition-colors" />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-1">
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest pl-1">Kode Produk *</label>
+                <input required type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Contoh: NIBB" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-indigo-500 transition-colors" />
               </div>
 
               <div className="space-y-1.5">

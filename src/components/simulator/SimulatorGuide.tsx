@@ -11,10 +11,19 @@ interface SimulatorGuideProps {
 export default function SimulatorGuide({ activeOrders, handleSimulatePayment, activeChannel }: SimulatorGuideProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (

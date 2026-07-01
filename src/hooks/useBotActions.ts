@@ -1,4 +1,7 @@
 import { BotConfig, CustomCommand, ModLog, Order, Product } from "../types";
+import { fetchWithAuth as fetch } from "../lib/api";
+
+import { fetchWithAuth } from "../lib/api";
 
 export function useBotActions(
   refreshAllData: () => Promise<void>,
@@ -37,7 +40,7 @@ export function useBotActions(
       variant: 'danger',
       onConfirm: async () => {
         try {
-          const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
           if (res.ok) { await refreshAllData(); showToast('Produk berhasil dihapus secara permanen!', 'success'); }
           else { showToast('Gagal menghapus produk.', 'error'); }
         } catch (err) { showToast('Terjadi kesalahan koneksi saat menghapus produk.', 'error'); }
@@ -51,6 +54,25 @@ export function useBotActions(
       await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updatedConfig) });
       await refreshAllData();
     } catch (err) { console.error(err); }
+  };
+
+  const handleUpdatePartialConfig = async (section: string, data: Partial<BotConfig>) => {
+    try {
+      const res = await fetch(`/api/config/${section}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        showToast('Configuration saved successfully', 'success');
+        await refreshAllData();
+      } else {
+        showToast('Failed to save configuration', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error saving configuration', 'error');
+    }
   };
 
   const handleAddCustomCommand = async (cmdData: Omit<CustomCommand, 'id' | 'usageCount'>) => {
@@ -79,7 +101,7 @@ export function useBotActions(
       variant: 'danger',
       onConfirm: async () => {
         try {
-          const res = await fetch(`/api/commands/${id}`, { method: 'DELETE' });
+          const res = await fetch(`/api/commands/${encodeURIComponent(id)}`, { method: 'DELETE' });
           if (res.ok) { await refreshAllData(); showToast('Perintah kustom berhasil dihapus!', 'success'); }
           else { showToast('Gagal menghapus perintah kustom.', 'error'); }
         } catch (err) { showToast('Terjadi kesalahan koneksi saat menghapus perintah.', 'error'); }
@@ -90,9 +112,21 @@ export function useBotActions(
 
   const handleUpdateAutoModSettings = async (automod: BotConfig['autoMod']) => {
     try {
-      await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...config, autoMod: automod }) });
-      await refreshAllData();
-    } catch (err) { console.error(err); }
+      const res = await fetch('/api/config/security', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoMod: automod })
+      });
+      if (res.ok) {
+        showToast('AutoMod settings saved successfully', 'success');
+        await refreshAllData();
+      } else {
+        showToast('Failed to save AutoMod settings', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error saving AutoMod settings', 'error');
+    }
   };
 
   const handleTriggerWebhookTest = async (): Promise<boolean> => {
@@ -152,7 +186,7 @@ export function useBotActions(
 
   return {
     handleAddProduct, handleUpdateProduct, handleDeleteProduct,
-    handleSaveBotConfig, handleAddCustomCommand, handleToggleCommand,
+    handleSaveBotConfig, handleUpdatePartialConfig, handleAddCustomCommand, handleToggleCommand,
     handleDeleteCustomCommand, handleUpdateAutoModSettings, handleTriggerWebhookTest,
     handleUpdateProductStockDirectly, handleAddOrderDirectly, handleIncrementStatsDirectly,
     handleAddModLogDirectly

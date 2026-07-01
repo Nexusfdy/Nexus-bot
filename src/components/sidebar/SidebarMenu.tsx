@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Package, Settings, ShieldCheck, Terminal, RefreshCw } from 'lucide-react';
+import { BarChart3, Package, Settings, ShieldCheck, Terminal, RefreshCw, Users, Command } from 'lucide-react';
 
 interface SidebarMenuProps {
   activeTab: string;
@@ -10,8 +10,10 @@ export default function SidebarMenu({ activeTab, handleTabClick }: SidebarMenuPr
   const menuItems = [
     { id: 'overview', name: 'Ringkasan & Stats', icon: BarChart3, color: 'text-emerald-400' },
     { id: 'products', name: 'Kelola Produk & Stok', icon: Package, color: 'text-blue-400' },
+    { id: 'transactions', name: 'Riwayat Transaksi', icon: RefreshCw, color: 'text-teal-400' },
+    { id: 'users', name: 'Manajemen User', icon: Users, color: 'text-fuchsia-400' },
     { id: 'config', name: 'Konfigurasi Bot Discord', icon: Settings, color: 'text-indigo-400' },
-    { id: 'custom-commands', name: 'Kustom Perintah', icon: RefreshCw, color: 'text-violet-400' },
+    { id: 'custom-commands', name: 'Kustom Perintah', icon: Command, color: 'text-violet-400' },
     { id: 'automod', name: 'Sistem Auto-Mod', icon: ShieldCheck, color: 'text-rose-400' },
     { id: 'simulator', name: 'Simulator Bot Live', icon: Terminal, color: 'text-amber-400' },
   ];

@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { DiscordMsg } from './types';
-import { Product, Order, CustomCommand, BotConfig, ModLog } from '../../../types';
+import { Product, Order, CustomCommand, BotConfig, ModLog } from '../../types';
 
 interface UseSimulatorChatProps {
   products: Product[];
@@ -32,8 +32,26 @@ export function useSimulatorChat({
     ],
     'moderation-logs': [
       { id: 'm1', author: { username: 'AutoMod Log', isBot: true, roleColor: 'text-rose-400' }, content: '', timestamp: new Date(), embed: { title: '🛡️ SECURE PORT STATUS: ON', description: 'Sistem auto-mod aktif menyaring konten tautan mencurigakan & kata kasar.', color: '#f23f43' } }
-    ]
+    ],
+    'live-stock': []
   });
+
+  const timersRef = useRef<NodeJS.Timeout[]>([]);
+
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach(timer => clearTimeout(timer));
+    };
+  }, []);
+
+  const safeSetTimeout = useCallback((cb: () => void, ms: number) => {
+    const timer = setTimeout(() => {
+      cb();
+      timersRef.current = timersRef.current.filter(t => t !== timer);
+    }, ms);
+    timersRef.current.push(timer);
+    return timer;
+  }, []);
 
   const addMessageToChannel = useCallback((channelId: string, msg: Omit<DiscordMsg, 'id' | 'timestamp'>) => {
     const newMsg: DiscordMsg = {
@@ -43,6 +61,48 @@ export function useSimulatorChat({
     };
     setMessages(prev => ({ ...prev, [channelId]: [...(prev[channelId] || []), newMsg] }));
   }, []);
+
+  useEffect(() => {
+    if (!config.liveStockChannel) return;
+    const channelId = config.liveStockChannel; 
+
+    const renderLiveStock = () => {
+      let desc = "👑 **Terakhir Update:** Just now\n\n**Daftar Produk Kami**\n⚠️ **Belum ada produk saat ini.**";
+      if (products.length > 0) {
+        const stockList = products.map(p => {
+            const count = p.stock?.length || 0;
+            const stockStatus = count > 0 ? `✅ In Stock (${count})` : `❌ Out of Stock (0)`;
+            return `📦 **${p.name}**\n- Kode: ${p.id.substring(0, 4).toUpperCase()}\n- Harga: **Rp${p.price.toLocaleString('id-ID')}**\n- Stok: ${stockStatus}`;
+        }).join('\n\n');
+        desc = `👑 **Terakhir Update:** Just now\n\n**Daftar Produk Kami**\n${stockList}`;
+      }
+
+      setMessages(prev => {
+        const updated = { ...prev };
+        let channelMsgs = updated[channelId] || [];
+        // Replace previous live stock message if exists
+        channelMsgs = channelMsgs.filter(m => !(m.embed?.title === "🤖 Nixs Store"));
+        channelMsgs.push({
+          id: Math.random().toString(36).substring(7),
+          timestamp: new Date(),
+          author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-blurple' },
+          content: '',
+          embed: {
+            title: "🤖 Nixs Store",
+            description: desc,
+            color: '#00FF00',
+            footer: 'AutoStore by GUE NDIRI | ' + new Date().toLocaleString()
+          }
+        });
+        updated[channelId] = channelMsgs;
+        return updated;
+      });
+    };
+
+    renderLiveStock();
+    const iv = setInterval(renderLiveStock, 60000);
+    return () => clearInterval(iv);
+  }, [config.liveStockChannel, products]);
 
   const handleSimulatePayment = async (activeChannel: string) => {
     const pendingOrder = activeOrders.find(o => o.status === 'Pending');
@@ -90,7 +150,7 @@ export function useSimulatorChat({
       }
 
       if (isViolated) {
-        setTimeout(async () => {
+        safeSetTimeout(async () => {
           setMessages(prev => {
             const list = prev['chat-bebas'] || [];
             const updatedList = [...list];
@@ -127,7 +187,7 @@ export function useSimulatorChat({
       const arg = parts.slice(1).join(' ').trim();
 
       if (rawCmd === 'stock') {
-        setTimeout(() => {
+        safeSetTimeout(() => {
           const embedFields = products.map(p => ({
             name: p.name, value: `• Price: **Rp ${p.price.toLocaleString('id-ID')}**\n• Stock: **${p.stock?.length || 0} items**\n• Tipe: *${p.type}*\n• ID: \`${p.id}\``, inline: false
           }));
@@ -139,18 +199,18 @@ export function useSimulatorChat({
         }, 600);
       } else if (rawCmd === 'buy') {
         if (!arg) {
-          setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '❌ **Sintaks Salah!**\nSertakan ID produk.\nContoh: `/buy prod-nitro-1m`' }), 450);
+          safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '❌ **Sintaks Salah!**\nSertakan ID produk.\nContoh: `/buy prod-nitro-1m`' }), 450);
           return;
         }
         const matchedProduct = products.find(p => p.id === arg);
         if (!matchedProduct) {
-          setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ **Gagal!**\nProduk dengan ID \`${arg}\` tidak terdaftar. Gunakan \`/stock\` untuk cek list ID produk.` }), 500);
+          safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ **Gagal!**\nProduk dengan ID \`${arg}\` tidak terdaftar. Gunakan \`/stock\` untuk cek list ID produk.` }), 500);
           return;
         }
         const orderId = 'ORD-' + Math.floor(100000 + Math.random() * 900000).toString(16).toUpperCase();
         const txId = 'TX-' + Math.random().toString(36).substring(4).toUpperCase();
-        setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-blurple' }, content: `⏳ Menyiapkan invoice digital QRIS pembayaran untuk **@${sender}**...` }), 300);
-        setTimeout(() => {
+        safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-blurple' }, content: `⏳ Menyiapkan invoice digital QRIS pembayaran untuk **@${sender}**...` }), 300);
+        safeSetTimeout(() => {
           addMessageToChannel(activeChannel, {
             author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-blurple' },
             content: '',
@@ -160,25 +220,25 @@ export function useSimulatorChat({
         }, 1000);
       } else if (rawCmd === 'claim') {
         if (!arg) {
-          setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '❌ **Sintaks Salah!**\nSertakan Order ID Anda.\nContoh: `/claim ORD-ABCXYZ`' }), 300);
+          safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '❌ **Sintaks Salah!**\nSertakan Order ID Anda.\nContoh: `/claim ORD-ABCXYZ`' }), 300);
           return;
         }
         const matchedOrder = activeOrders.find(o => o.id === arg);
         if (!matchedOrder) {
-           setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ **Gagal!**\nOrder ID \`${arg}\` tidak terdaftar atau pembayaran belum divalidasi.` }), 450);
+           safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ **Gagal!**\nOrder ID \`${arg}\` tidak terdaftar atau pembayaran belum divalidasi.` }), 450);
            return;
         }
         if (matchedOrder.status === 'Claimed') {
-           setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ **Peringatan!**\nOrder \`${arg}\` sudah pernah diklaim sebelumnya!` }), 450);
+           safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ **Peringatan!**\nOrder \`${arg}\` sudah pernah diklaim sebelumnya!` }), 450);
            return;
         }
         const matchedProduct = products.find(p => p.id === matchedOrder.productId);
         if (!matchedProduct) {
-          setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '❌ Produk tersebut tidak lagi didukung di server kami!' }), 400);
+          safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '❌ Produk tersebut tidak lagi didukung di server kami!' }), 400);
           return;
         }
         if (!matchedProduct.stock || matchedProduct.stock.length === 0) {
-          setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '', embed: { title: '⚠️ PRODUK KEHABISAN STOK CADANGAN', description: `Pemesanan \`${arg}\` berhasil divalidasi, namun stok digital kunci kosong. Harap ping Admin untuk pengisian ulang manual segera.`, color: '#f23f43' } }), 500);
+          safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: '', embed: { title: '⚠️ PRODUK KEHABISAN STOK CADANGAN', description: `Pemesanan \`${arg}\` berhasil divalidasi, namun stok digital kunci kosong. Harap ping Admin untuk pengisian ulang manual segera.`, color: '#f23f43' } }), 500);
           return;
         }
         const deliveredKey = matchedProduct.stock[0];
@@ -191,21 +251,21 @@ export function useSimulatorChat({
         matchedOrder.claimedAt = Date.now();
         await onAddOrder(matchedOrder);
 
-        setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-green' }, content: '', embed: { title: '🔑 PENGIRIMAN DIGITAL SUKSES!', description: `Terima kasih atas pesanan Anda. Berikut detail item digital Anda:\n\n📦 **Item Name:** ${matchedOrder.productName}\n🎫 **Order ID:** \`${matchedOrder.id}\`\n🔓 **Kunci / Akun Lisensi:**\n\`\`\`\n${deliveredKey}\n\`\`\`\n\n*Kode di atas bersifat rahasia. Jangan sebar di publik chat!*`, color: '#23a55a' } }), 800);
+        safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-green' }, content: '', embed: { title: '🔑 PENGIRIMAN DIGITAL SUKSES!', description: `Terima kasih atas pesanan Anda. Berikut detail item digital Anda:\n\n📦 **Item Name:** ${matchedOrder.productName}\n🎫 **Order ID:** \`${matchedOrder.id}\`\n🔓 **Kunci / Akun Lisensi:**\n\`\`\`\n${deliveredKey}\n\`\`\`\n\n*Kode di atas bersifat rahasia. Jangan sebar di publik chat!*`, color: '#23a55a' } }), 800);
       } else if (rawCmd === 'help') {
-        setTimeout(() => {
+        safeSetTimeout(() => {
           const customCmdLines = commands.filter(c => c.isActive).map(c => `• \`!${c.name}\` atau \`/${c.name}\` : ${c.description}`).join('\n');
           addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-blurple' }, content: '', embed: { title: '📘 DAFTAR COMMAND TERSEDIA', description: `**Core Store Commands:**\n• \`/stock\` - Cek stock ter-update\n• \`/buy [id-produk]\` - Buat Tagihan QRIS\n• \`/claim [order-id]\` - Klaim lisensi digital setelah memesan\n\n**Custom Server Commands:**\n` + (customCmdLines || '*Tidak ada perintah kustom aktif.*'), color: '#5865F2' } });
         }, 500);
       } else {
         const matchedCustom = commands.find(c => c.name === rawCmd && c.isActive);
         if (matchedCustom) {
-          setTimeout(() => {
+          safeSetTimeout(() => {
             addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-blurple' }, content: matchedCustom.response });
             matchedCustom.usageCount = (matchedCustom.usageCount || 0) + 1;
           }, 450);
         } else {
-          setTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ Perintah \`/${rawCmd}\` tidak dapat diidentifikasi.` }), 300);
+          safeSetTimeout(() => addMessageToChannel(activeChannel, { author: { username: 'NEXUS Bot', isBot: true, roleColor: 'text-discord-red' }, content: `❌ Perintah \`/${rawCmd}\` tidak dapat diidentifikasi.` }), 300);
         }
       }
     }
