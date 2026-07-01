@@ -44,7 +44,10 @@ app.use("/api", apiLimiter, apiRouter);
 async function startServer() {
   loadServerState();
 
-  if (process.env.NODE_ENV !== "production") {
+  const isProduction = process.env.NODE_ENV === "production" || 
+                       (process.argv[1] && process.argv[1].endsWith("server.cjs"));
+
+  if (!isProduction) {
     console.log("Starting server in DEVELOPMENT mode with Vite Middleware.");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -65,7 +68,7 @@ async function startServer() {
     console.error(`[Centralized Error Logger] ${req.method} ${req.url}`, err.stack);
     res.status(err.status || 500).json({
       error: "Internal Server Error",
-      message: process.env.NODE_ENV === 'production' ? 'Something went wrong.' : err.message
+      message: isProduction ? 'Something went wrong.' : err.message
     });
   });
 
