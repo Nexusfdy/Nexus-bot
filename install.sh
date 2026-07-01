@@ -105,6 +105,50 @@ if [ -z "$JWT_SECRET" ] || [ -z "$ADMIN_PASSWORD" ] || [ -z "$DATABASE_URL" ]; t
 fi
 echo -e "${GREEN}Validasi .env sukses.${NC}"
 
+echo -e "${YELLOW}[8.5/15] Pengecekan Port Aplikasi...${NC}"
+APP_PORT=$(grep -E "^PORT=" .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+if [ -z "$APP_PORT" ]; then
+    APP_PORT=3000
+fi
+
+# Pastikan utility 'ss' tersedia, jika tidak coba 'netstat', jika tidak gunakan node
+if command -v ss > /dev/null; then
+    while ss -tuln | grep -qE ":$APP_PORT\b"; do
+        echo -e "${YELLOW}Port $APP_PORT sedang digunakan. Mencari port lain...${NC}"
+        APP_PORT=$((APP_PORT+1))
+    done
+elif command -v netstat > /dev/null; then
+    while netstat -tuln | grep -qE ":$APP_PORT\b"; do
+        echo -e "${YELLOW}Port $APP_PORT sedang digunakan. Mencari port lain...${NC}"
+        APP_PORT=$((APP_PORT+1))
+    done
+else
+    # Fallback to node script if ss and netstat are not available
+    APP_PORT=$(node -e "
+const net = require('net');
+let port = parseInt('$APP_PORT', 10);
+if (isNaN(port)) port = 3000;
+function checkPort(p) {
+  const s = net.createServer();
+  s.unref();
+  s.on('error', () => { console.error('Port '+p+' sedang digunakan. Mencari port lain...'); checkPort(p + 1); });
+  s.listen(p, () => { s.close(() => { console.log(p); }); });
+}
+checkPort(port);
+")
+fi
+
+echo -e "${GREEN}Port $APP_PORT tersedia dan akan digunakan.${NC}"
+
+if grep -q "^PORT=" .env; then
+    sed -i "s/^PORT=.*/PORT=$APP_PORT/" .env
+else
+    echo "PORT=$APP_PORT" >> .env
+fi
+
+# Reload Env after updating PORT
+export $(grep -v '^#' .env | xargs)
+
 echo -e "${YELLOW}[9/15] Menjalankan npm install...${NC}"
 npm install
 
@@ -115,8 +159,7 @@ echo -e "${YELLOW}[11/15] Database Bootstrap...${NC}"
 echo -e "${GREEN}Aplikasi akan melakukan bootstrap otomatis pada tabel-tabel PostgreSQL saat dijalankan.${NC}"
 
 echo -e "${YELLOW}[12/15] Menjalankan Aplikasi dengan PM2...${NC}"
-pm2 delete nexus-bot 2>/dev/null || true
-pm2 start dist/server.cjs --name "nexus-bot"
+pm2 restart nexus-bot --update-env || pm2 start dist/server.cjs --name "nexus-bot"
 
 echo -e "${YELLOW}[13/15] Menyimpan PM2 Startup...${NC}"
 sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp $HOME || pm2 startup
@@ -126,7 +169,7 @@ echo -e "${YELLOW}[14/15] Konfigurasi Firewall (UFW)...${NC}"
 sudo ufw allow ssh
 sudo ufw allow http
 sudo ufw allow https
-sudo ufw allow 3000
+sudo ufw allow $APP_PORT
 sudo ufw --force enable
 
 echo -e "${YELLOW}[15/15] Finalisasi...${NC}"
@@ -143,7 +186,7 @@ echo -e ""
 
 PUBLIC_IP=$(curl -sS ifconfig.me 2>/dev/null || echo "IP_SERVER_ANDA")
 echo -e "Akses Dashboard melalui browser:"
-echo -e "${YELLOW}  http://$PUBLIC_IP:3000${NC}"
+echo -e "${YELLOW}  http://$PUBLIC_IP:$APP_PORT${NC}"
 echo -e ""
 echo -e "Password Admin Default: ${YELLOW}$ADMIN_PASSWORD${NC}"
 echo -e "${RED}Sangat disarankan untuk mengubah password admin di .env dan merestart aplikasi.${NC}"

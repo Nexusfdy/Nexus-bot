@@ -11,7 +11,7 @@ import { rateLimit } from "express-rate-limit";
 
 const app = express();
 app.set("trust proxy", 1);
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Security HTTP Headers
 app.use(helmet({
