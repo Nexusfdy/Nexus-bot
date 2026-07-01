@@ -28,11 +28,10 @@ DB_PASS=$(openssl rand -hex 16 2>/dev/null || date +%s%N | sha256sum | head -c 3
 JWT_SEC=$(openssl rand -hex 32 2>/dev/null || date +%s%N | sha256sum | head -c 64)
 
 echo -e "${YELLOW}[1/15] Pengecekan Persyaratan Perangkat Keras...${NC}"
-# Cek RAM (Min 1 GB = 1000 MB)
+# Cek RAM (Min 1 GB)
 TOTAL_RAM=$(free -m | awk '/^Mem:/{print $2}')
-if [ "$TOTAL_RAM" -lt 1000 ]; then
-    echo -e "${RED}Error: Minimal 1GB RAM dibutuhkan. Saat ini hanya ${TOTAL_RAM}MB.${NC}"
-    exit 1
+if [ "$TOTAL_RAM" -lt 900 ]; then
+    echo -e "${YELLOW}Warning: RAM terbaca ${TOTAL_RAM}MB. Direkomendasikan minimal 1GB untuk performa optimal. Instalasi tetap dilanjutkan.${NC}"
 fi
 
 # Cek Free Disk (Min 2 GB = 2000 MB)
