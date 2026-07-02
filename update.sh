@@ -27,7 +27,7 @@ APP_PORT=${PORT:-3000}
 echo -e "${GREEN}Port yang akan digunakan PM2: $APP_PORT${NC}"
 
 echo -e "${YELLOW}5. Restart PM2 dan memuat environment terbaru...${NC}"
-pm2 restart nexus-bot --update-env || pm2 start dist/server.cjs --name "nexus-bot"
+NODE_ENV=production pm2 restart nexus-bot --update-env || NODE_ENV=production pm2 start dist/server.cjs --name "nexus-bot"
 
 echo -e "${GREEN}Update selesai! Aplikasi sekarang berjalan di background.${NC}"
 echo -e "${YELLOW}Gunakan 'pm2 logs nexus-bot' untuk memantau log.${NC}"

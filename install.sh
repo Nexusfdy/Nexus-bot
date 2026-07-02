@@ -159,7 +159,7 @@ echo -e "${YELLOW}[11/15] Database Bootstrap...${NC}"
 echo -e "${GREEN}Aplikasi akan melakukan bootstrap otomatis pada tabel-tabel PostgreSQL saat dijalankan.${NC}"
 
 echo -e "${YELLOW}[12/15] Menjalankan Aplikasi dengan PM2...${NC}"
-pm2 restart nexus-bot --update-env || pm2 start dist/server.cjs --name "nexus-bot"
+NODE_ENV=production pm2 restart nexus-bot --update-env || NODE_ENV=production pm2 start dist/server.cjs --name "nexus-bot"
 
 echo -e "${YELLOW}[13/15] Menyimpan PM2 Startup...${NC}"
 sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp $HOME || pm2 startup

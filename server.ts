@@ -45,7 +45,12 @@ async function startServer() {
   loadServerState();
 
   const isProduction = process.env.NODE_ENV === "production" || 
-                       (process.argv[1] && process.argv[1].endsWith("server.cjs"));
+                       (process.argv[1] && process.argv[1].includes("server.cjs")) ||
+                       process.env.pm_id !== undefined;
+
+  if (isProduction) {
+    process.env.NODE_ENV = "production"; // Ensure downstream processes know we are in production
+  }
 
   if (!isProduction) {
     console.log("Starting server in DEVELOPMENT mode with Vite Middleware.");
@@ -55,7 +60,8 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    console.log("Starting server in PRODUCTION mode.");
+    console.log("Running in PRODUCTION mode");
+    console.log("Serving static files from dist");
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
@@ -73,7 +79,7 @@ async function startServer() {
   });
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Express and Vite Server running on http://localhost:${PORT}`);
+    console.log(`Listening on PORT ${PORT}`);
     
     // Auto initiate bot on startup!
     initializeDiscordBot().catch((e) => {
