@@ -113,39 +113,75 @@ export const handleMessageCreate = async (message: Message) => {
   // Saweria Webhook Listener MVP
   if (message.webhookId && currentConfig.depositWebhookChannelId && message.channel.id === currentConfig.depositWebhookChannelId) {
     // Saweria Webhook messages contain the donation details usually in an embed or raw text
-    // "Nama Donatur just donated Rp10,000"
     let contentToParse = message.content || "";
+    
+    console.log(`[Saweria] Received webhook message ${message.id}`);
+    console.log(`[Saweria] Raw content: "${contentToParse}"`);
+
     if (message.embeds && message.embeds.length > 0) {
       const embed = message.embeds[0];
-      contentToParse += `\n${embed.title || ""}\n${embed.description || ""}`;
+      
+      const embedParts = [
+        embed.title,
+        embed.description,
+        embed.author?.name,
+        embed.footer?.text,
+        ...(embed.fields?.map(f => `${f.name} ${f.value}`) || [])
+      ].filter(Boolean).join('\n');
+      
+      console.log(`[Saweria] Embed parts extracted: "${embedParts}"`);
+      contentToParse += `\n${embedParts}`;
     }
 
-    // Strip markdown bold and italic for easier regex matching
-    contentToParse = contentToParse.replace(/\*/g, '').replace(/_/g, '');
+    // Strip markdown formatting for easier regex matching
+    contentToParse = contentToParse.replace(/[*_`~]/g, '');
 
-    const saweriaMatch = contentToParse.match(/(.*?)\s+just\s+donated\s+(?:Rp|IDR)\s*([\d.,]+)/i) 
-      || contentToParse.match(/(.*?)\s+telah\s+berdonasi\s+sebesar\s+(?:Rp|IDR)\s*([\d.,]+)/i) 
-      || contentToParse.match(/(.*?)\s+berdonasi\s+(?:Rp|IDR)\s*([\d.,]+)/i);
+    const patterns = [
+      /Donasi\s+Masuk\s+Dari\s+(.*?)\s+Sebesar\s+(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(.*?)\s+just\s+donated\s+(?:Rp|IDR)\s*([\d.,]+)/i,
+      /(.*?)\s+telah\s+berdonasi\s+sebesar\s+(?:Rp|IDR)\s*([\d.,]+)/i,
+      /(.*?)\s+berdonasi\s+(?:Rp|IDR)\s*([\d.,]+)/i
+    ];
+
+    let saweriaMatch = null;
+    let matchedPatternIndex = -1;
+    for (let i = 0; i < patterns.length; i++) {
+      const match = contentToParse.match(patterns[i]);
+      if (match) {
+        saweriaMatch = match;
+        matchedPatternIndex = i;
+        break;
+      }
+    }
 
     if (saweriaMatch) {
       const donorName = saweriaMatch[1].trim();
       const amountStr = saweriaMatch[2].replace(/[^\d]/g, ''); // bersihkan titik/koma
       const amount = parseInt(amountStr, 10);
       
+      console.log(`[Saweria] Regex matched (Pattern ${matchedPatternIndex})! Username: "${donorName}", Amount: ${amount}`);
+
       if (!isNaN(amount) && amount > 0) {
         try {
           const topupRes = await dbService.processTopup(message.id, donorName, amount);
+          console.log(`[Saweria] processTopup result for ${donorName}:`, JSON.stringify(topupRes));
+
           if (topupRes.success) {
             await message.reply(`✅ **Auto-Topup Success!** Saldo untuk user **${donorName}** (ID: ${topupRes.userId}) telah ditambahkan sebesar **Rp ${amount.toLocaleString('id-ID')}**.`);
           } else if (topupRes.error === "Message already processed") {
-            // Already processed, ignore
+            console.log(`[Saweria] Message ${message.id} already processed.`);
           } else {
+            console.error(`[Saweria] PostgreSQL Topup Failed for ${donorName}: ${topupRes.error}`);
             await message.reply(`⚠️ **Auto-Topup Failed!** Gagal menambahkan saldo untuk **${donorName}**: ${topupRes.error}`);
           }
         } catch (err: any) {
-          console.error("Failed to process Saweria Topup:", err);
+          console.error(`[Saweria] Uncaught exception processing Saweria Topup for ${donorName}:`, err);
         }
+      } else {
+        console.log(`[Saweria] Parsed amount is invalid: ${amountStr}`);
       }
+    } else {
+      console.log(`[Saweria] Parsing failed. Content did not match any known format: "${contentToParse}"`);
     }
     return; // Don't process command if it's a webhook
   }
