@@ -117,7 +117,7 @@ export const handleMessageCreate = async (message: Message) => {
     let contentToParse = message.content || "";
     if (message.embeds && message.embeds.length > 0) {
       const embed = message.embeds[0];
-      contentToParse += ` ${embed.title || ""} ${embed.description || ""}`;
+      contentToParse += `\n${embed.title || ""}\n${embed.description || ""}`;
     }
 
     // Strip markdown bold and italic for easier regex matching
