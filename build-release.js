@@ -1,4 +1,3 @@
-import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -15,10 +14,13 @@ fs.mkdirSync(releaseDir);
 
 // 1. Encrypted Version ZIP
 console.log("Packaging Encrypted Version...");
-const encryptedZip = new AdmZip();
-encryptedZip.addLocalFolder(path.join(process.cwd(), 'dist'), 'dist');
+const encryptedDir = path.join(process.cwd(), 'release', 'encrypted_temp');
+fs.mkdirSync(encryptedDir, { recursive: true });
 
-// Read original package.json and modify for production/encrypted release
+// Copy dist
+execSync(`cp -r dist "${encryptedDir}/"`);
+
+// Create package.json
 const pkgJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 const encPkg = {
   name: pkgJson.name + "-encrypted",
@@ -31,10 +33,10 @@ const encPkg = {
   },
   dependencies: pkgJson.dependencies
 };
-encryptedZip.addFile('package.json', Buffer.from(JSON.stringify(encPkg, null, 2), 'utf8'));
+fs.writeFileSync(path.join(encryptedDir, 'package.json'), JSON.stringify(encPkg, null, 2));
 
 if (fs.existsSync(path.join(process.cwd(), '.env.example'))) {
-  encryptedZip.addLocalFile(path.join(process.cwd(), '.env.example'));
+  fs.copyFileSync(path.join(process.cwd(), '.env.example'), path.join(encryptedDir, '.env.example'));
 }
 
 const readmeEncrypted = `NEXUS BOT - ENCRYPTED VERSION
@@ -46,27 +48,26 @@ Cara Menjalankan:
 3. Copy file .env.example menjadi .env dan isi konfigurasinya
 4. Jalankan bot dengan perintah: npm start
 `;
-encryptedZip.addFile('README.txt', Buffer.from(readmeEncrypted, 'utf8'));
+fs.writeFileSync(path.join(encryptedDir, 'README.txt'), readmeEncrypted);
 
-encryptedZip.writeZip(path.join(releaseDir, 'nexus-bot-encrypted.zip'));
+// Zip it using native zip
+try {
+  execSync(`cd "${encryptedDir}" && zip -r ../nexus-bot-encrypted.zip ./*`);
+} catch(e) {
+  console.log("Zip error", e);
+}
+fs.rmSync(encryptedDir, { recursive: true, force: true });
 
 // 2. Full Source Code ZIP
 console.log("Packaging Source Code Version...");
-const sourceZip = new AdmZip();
-const addFolderToZip = (folderPath, zipPath) => {
-    const items = fs.readdirSync(folderPath);
-    for (const item of items) {
-        if (['node_modules', 'dist', 'release', '.git', '.env', 'build-release.js', 'test-sync.ts', 'test-db.ts'].includes(item)) continue;
-        const fullPath = path.join(folderPath, item);
-        const stat = fs.statSync(fullPath);
-        if (stat.isDirectory()) {
-            sourceZip.addLocalFolder(fullPath, path.join(zipPath, item));
-        } else {
-            sourceZip.addLocalFile(fullPath, zipPath);
-        }
-    }
-};
-addFolderToZip(process.cwd(), '');
+const sourceDir = path.join(process.cwd(), 'release', 'source_temp');
+fs.mkdirSync(sourceDir, { recursive: true });
+
+const items = fs.readdirSync(process.cwd());
+for (const item of items) {
+  if (['node_modules', 'dist', 'release', '.git', '.env', 'build-release.js', 'test-sync.ts', 'test-db.ts'].includes(item)) continue;
+  execSync(`cp -r "${path.join(process.cwd(), item)}" "${sourceDir}/"`);
+}
 
 const readmeSource = `NEXUS BOT - FULL SOURCE CODE
 ============================
@@ -81,8 +82,13 @@ Cara Build:
 - Normal Build: npm run build
 - Encrypted Build: npm run build:encrypt
 `;
-sourceZip.addFile('README.txt', Buffer.from(readmeSource, 'utf8'));
+fs.writeFileSync(path.join(sourceDir, 'README.txt'), readmeSource);
 
-sourceZip.writeZip(path.join(releaseDir, 'nexus-bot-source.zip'));
+try {
+  execSync(`cd "${sourceDir}" && zip -r ../nexus-bot-source.zip ./* -x ".*"`);
+} catch(e) {
+  console.log("Zip error", e);
+}
+fs.rmSync(sourceDir, { recursive: true, force: true });
 
 console.log("✅ Release packages created successfully in the 'release/' folder!");
