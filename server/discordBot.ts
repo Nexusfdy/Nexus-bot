@@ -1,5 +1,7 @@
-import { Client, GatewayIntentBits, ActivityType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, TextChannel, Options } from "discord.js";
+import AdmZip from "adm-zip";
+import { Client, GatewayIntentBits, ActivityType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder, TextChannel, Options, REST, Routes } from "discord.js";
 import { dbService } from "../src/db/db_service.ts";
+import { defaultUIConfig } from "../src/types.ts";
 import { BotConfig, Product, Order, CustomCommand, ModLog, BotStats } from "../src/types.ts";
 import { discordState, saveServerState } from "./discordState.ts";
 import { handleMessageCreate, cleanupMessageHandlerTimeouts } from "./botFeatures/messageHandler.ts";
@@ -230,6 +232,7 @@ export async function initializeDiscordBot() {
         
         // Delivery Recovery mechanism execution
         runDeliveryRecovery(discordState.client);
+        syncSlashCommands();
       });
 
       discordState.client.on("guildCreate", async (guild) => {
@@ -292,6 +295,67 @@ export async function initializeDiscordBot() {
       
       discordState.client.on("interactionCreate", async (interaction) => {
         try {
+          if (interaction.isChatInputCommand()) {
+            const { commandName } = interaction;
+            
+            if (commandName === 'help') {
+              const customCommands = await dbService.getCommands();
+              const activeCmds = customCommands.filter((c: any) => c.isActive).map((c: any) => `\`/${c.name}\``).join(", ");
+              
+              let helpMsg = `🤖 **Daftar Perintah ${discordState.client?.user?.username || "Bot"}**\n\n`;
+              helpMsg += `🔹 \`/stock\` - Menampilkan Live Stock produk\n`;
+              helpMsg += `🔹 \`/help\` - Menampilkan daftar pesan bantuan ini\n`;
+              
+              if (activeCmds) {
+                helpMsg += `\n**✨ Perintah Tambahan Server:**\n${activeCmds}`;
+              }
+              await interaction.reply({ content: helpMsg });
+              return;
+            }
+            
+            if (commandName === 'stock' || commandName === 'livestock') {
+              const products = await dbService.getProducts();
+              let description = `Last Update: <t:${Math.floor(Date.now() / 1000)}:R>\n------------------------------------------------\n`;
+              if (products.length === 0) {
+                description += "*Belum ada produk yang dijual saat ini.*";
+              } else {
+                products.forEach(p => {
+                  const stockAmt = p.stock && Array.isArray(p.stock) ? p.stock.length : 0;
+                  description += `👑 **${p.name}** 👑\n\n`;
+                  description += `• ${p.name} #📦|${(p.category || 'PRODUK').toUpperCase().replace(/\s+/g, '-')}\n`;
+                  description += `➡ Code : **${p.id}**\n`;
+                  description += `➡ Stock : ${stockAmt > 0 ? stockAmt + ' 🟩' : '🟥'}\n`;
+                  description += `➡ Price : ${p.price.toLocaleString('id-ID')} 🔏\n`;
+                  description += `------------------------------------------------\n`;
+                });
+              }
+              const stockEmbed = new EmbedBuilder().setTitle('🎇 PRODUCT LIST 🎇').setDescription(description).setColor('#00ffff');
+              
+              const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('buy_btn').setLabel('Buy').setEmoji('🛒').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('growid_btn').setLabel('Set GrowID').setEmoji('📖').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('qris_btn').setLabel('QRIS Deposit').setEmoji('🪪').setStyle(ButtonStyle.Secondary)
+              );
+              const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder().setCustomId('balance_btn').setLabel('Balance').setEmoji('💳').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('depo_world_btn').setLabel('Deposit World').setEmoji('🌍').setStyle(ButtonStyle.Secondary)
+              );
+              await interaction.reply({ embeds: [stockEmbed], components: [row1, row2] });
+              return;
+            }
+            
+            const customCommands = await dbService.getCommands();
+            const matchedCmd = customCommands.find(c => c.name.toLowerCase() === commandName && c.isActive);
+            if (matchedCmd) {
+              await interaction.reply({ content: matchedCmd.response });
+              matchedCmd.usageCount += 1;
+              await dbService.saveCommand(matchedCmd);
+              const stats = await dbService.getStats();
+              await dbService.updateStats({ commandsRun: stats.commandsRun + 1 });
+            }
+            return;
+          }
+
           if (interaction.isButton()) {
             if (interaction.customId === 'refresh_live_stock') {
               await interaction.deferUpdate();
@@ -320,8 +384,31 @@ export async function initializeDiscordBot() {
 
               modal.addComponents(firstActionRow, secondActionRow);
               await interaction.showModal(modal);
-            } else if (interaction.customId === 'topup_qris') {
-              await interaction.reply({ content: "💳 Silahkan hubungi admin atau gunakan perintah `/topup` untuk melakukan pengisian saldo.", ephemeral: true });
+            } else if (interaction.customId === 'topup_saldo') {
+              const ui = config.uiConfig || defaultUIConfig;
+              const provider = ui.paymentProvider || defaultUIConfig.paymentProvider;
+              const title = ui.paymentTitle || defaultUIConfig.paymentTitle;
+              const descTemplate = ui.paymentDescription || defaultUIConfig.paymentDescription;
+              const btnTemplate = ui.paymentButtonText || defaultUIConfig.paymentButtonText;
+              
+              const description = descTemplate.replace(/{provider}/g, provider.charAt(0).toUpperCase() + provider.slice(1));
+              const buttonText = btnTemplate.replace(/{provider}/g, provider.charAt(0).toUpperCase() + provider.slice(1));
+              const paymentUrl = ui.paymentUrl || defaultUIConfig.paymentUrl;
+              
+              const topupEmbed = new EmbedBuilder()
+                  .setTitle(title)
+                  .setDescription(description)
+                  .setColor((ui.storeColor || defaultUIConfig.storeColor) as any);
+                  
+              const row = new ActionRowBuilder<ButtonBuilder>()
+                  .addComponents(
+                      new ButtonBuilder()
+                          .setLabel(buttonText)
+                          .setStyle(ButtonStyle.Link)
+                          .setURL(paymentUrl)
+                  );
+                  
+              await interaction.reply({ embeds: [topupEmbed], components: [row], ephemeral: true });
             } else if (interaction.customId === 'cek_saldo') {
               const user = await dbService.getUserByDiscordId(interaction.user.id);
               const balance = user ? user.balance : 0;
@@ -396,7 +483,7 @@ export async function initializeDiscordBot() {
                   }
 
                   const stockAvailable = product.stock?.length || 0;
-                  if (qty > stockAvailable) {
+                  if (!product.isUnlimited && qty > stockAvailable) {
                       await interaction.reply({ content: `❌ Stok tidak mencukupi. Hanya tersedia ${stockAvailable} item untuk produk ini.`, ephemeral: true });
                       return;
                   }
@@ -435,16 +522,27 @@ export async function initializeDiscordBot() {
                   // Try DM user
                   let dmSuccess = false;
                   try {
-                    const itemsText = stockItems.join('\n');
-                    const buffer = Buffer.from(itemsText, 'utf-8');
-                    const attachment = new AttachmentBuilder(buffer, { name: `${product.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_items.txt` });
+                    let dmFiles = [];
+                    const isUnlimitedFile = stockItems.length > 0 && stockItems[0].startsWith('[FILE_ATTACHMENT]:');
+                    
+                    if (isUnlimitedFile) {
+                      const filePath = stockItems[0].split('[FILE_ATTACHMENT]:')[1];
+                      const attachment = new AttachmentBuilder(filePath);
+                      dmFiles.push(attachment);
+                    } else {
+                      const itemsText = stockItems.join('\n');
+                      const zip = new AdmZip();
+                      zip.addFile(`${product.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_items.txt`, Buffer.from(itemsText, 'utf-8'));
+                      const zipBuffer = zip.toBuffer();
+                      const attachment = new AttachmentBuilder(zipBuffer, { name: `${product.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_pesanan.zip` });
+                      dmFiles.push(attachment);
+                    }
                     
                     const dmChannel = await interaction.user.createDM();
                     await dmChannel.send({
                       content: `Terima kasih telah membeli **${product.name}**!\n\nBerikut pesanan kamu terlampir pada file dibawah ini.\nSisa saldo kamu: **Rp ${(newBalance || 0).toLocaleString('id-ID')}**.`,
-                      files: [attachment]
+                      files: dmFiles
                     });
-                    
                     dmSuccess = true;
                   } catch (err) {
                     console.error(`[DM Failed] Could not DM user ${interaction.user.id} for tx ${txId}:`, err);
@@ -516,4 +614,38 @@ export function applyBotPresence(client: Client, config: BotConfig) {
     } catch (err) {
       console.error("[Discord Bot] Fails setting client bot presence status:", err);
     }
+}
+
+export async function syncSlashCommands() {
+  if (!discordState.client || !discordState.client.user) return;
+  try {
+    const config = await dbService.getConfig();
+    if (!config.botToken || config.botToken === "NONE") return;
+
+    const commands = await dbService.getCommands();
+    const activeCommands = commands.filter(c => c.isActive);
+
+    const slashCommands = activeCommands.map(c => ({
+      name: c.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+      description: (c.description || 'Custom command').substring(0, 100),
+    }));
+    
+    slashCommands.push({
+      name: 'help',
+      description: 'Menampilkan daftar pesan bantuan'
+    }, {
+      name: 'stock',
+      description: 'Menampilkan Live Stock produk'
+    });
+
+    const rest = new REST({ version: '10' }).setToken(config.botToken);
+    console.log(`[Discord Bot] Started refreshing ${slashCommands.length} application (/) commands.`);
+    await rest.put(
+      Routes.applicationCommands(discordState.client.user.id),
+      { body: slashCommands },
+    );
+    console.log(`[Discord Bot] Successfully reloaded application (/) commands.`);
+  } catch (error) {
+    console.error(`[Discord Bot] Error syncing slash commands:`, error);
+  }
 }

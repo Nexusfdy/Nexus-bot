@@ -1,14 +1,44 @@
 import { Router } from "express";
+import multer from 'multer';
+import path from 'path';
+import fs2 from 'fs';
+
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import { dbService } from "../src/db/db_service.ts";
 import { Product, CustomCommand, BotConfig, BotStats, ModLog, Order } from "../src/types.ts";
 import { discordState } from "./discordState.ts";
+import { syncSlashCommands } from "./discordBot.ts";
 import { initializeDiscordBot, applyBotPresence } from "./discordBot.ts";
 import { updateLiveStock } from "./botFeatures/liveStock.ts";
 import { requireAuth, generateToken, ADMIN_PASSWORD } from "./auth.ts";
 
 export const apiRouter = Router();
+
+const uploadDir = path.join(process.cwd(), 'uploads');
+if (!fs2.existsSync(uploadDir)) {
+  fs2.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir)
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, uniqueSuffix + '-' + file.originalname)
+  }
+});
+const upload = multer({ storage: storage });
+
+apiRouter.post("/upload", requireAuth, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const filePath = path.join(uploadDir, req.file.filename);
+  res.json({ success: true, filePath: filePath });
+});
+
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -46,11 +76,13 @@ const productSchema = z.object({
   name: z.string().min(1, "Name is required"),
   price: z.number().min(0, "Price must be non-negative"),
   description: z.string().optional(),
-  type: z.enum(['License Key', 'Download Link', 'Accounts']),
+  type: z.string(),
   stock: z.array(z.string()),
   category: z.string().optional(),
   imageUrl: z.string().optional(),
-  createdAt: z.number().optional()
+  createdAt: z.number().optional(),
+  isUnlimited: z.boolean().optional(),
+  filePath: z.string().optional()
 });
 
 apiRouter.post("/products", async (req, res) => {
@@ -108,6 +140,10 @@ apiRouter.post("/commands", async (req, res) => {
   try {
     const cmd = commandSchema.parse(req.body) as unknown as CustomCommand;
     await dbService.saveCommand(cmd);
+    
+    // Sync commands dynamically
+    syncSlashCommands().catch(err => console.error("Failed syncing slash commands", err));
+    
     res.json({ success: true, command: cmd });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
@@ -121,6 +157,10 @@ apiRouter.delete("/commands/:id", async (req, res) => {
   try {
     const { id } = req.params;
     await dbService.deleteCommand(id);
+    
+    // Sync commands dynamically
+    syncSlashCommands().catch(err => console.error("Failed syncing slash commands", err));
+    
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -202,6 +242,13 @@ apiRouter.patch("/config/:section", async (req, res) => {
         body.statusText !== undefined ? body.statusText : currentConfig.statusText,
         body.statusType !== undefined ? body.statusType : currentConfig.statusType
       );
+    } else if (section === 'ui') {
+      await dbService.updateUIConfig(body);
+      
+      // Update livestock if running
+      if (discordState.client && discordState.botStatus === "ONLINE") {
+        updateLiveStock(discordState.client);
+      }
     } else if (section === 'discord') {
       const incomingToken = body.botToken === undefined || body.botToken === null || body.botToken.trim() === "" ? "NONE" : body.botToken;
       await dbService.updateDiscordConfig(incomingToken);

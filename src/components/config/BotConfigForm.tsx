@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Save, Check, RefreshCw } from 'lucide-react';
 import { BotConfig } from '../../types';
 import BotTokenField from './BotTokenField';
+import StoreUIConfigPanel from './StoreUIConfigPanel';
+import { StoreUIConfig } from '../../types';
 import BotIdentityFields from './BotIdentityFields';
 
 import { fetchWithAuth } from '../../lib/api';
@@ -113,6 +115,11 @@ export default function BotConfigForm({
   const [savingServer, setSavingServer] = useState(false);
   const [savingLiveStock, setSavingLiveStock] = useState(false);
   const [savingSaweria, setSavingSaweria] = useState(false);
+
+  
+  const handleUpdateUIConfig = async (uiConfig: StoreUIConfig) => {
+    await handleUpdate('ui', uiConfig, () => {});
+  };
 
   const handleUpdate = async (section: string, data: any, setSaving: (val: boolean) => void) => {
     setSaving(true);
@@ -406,8 +413,13 @@ export default function BotConfigForm({
               </select>
             </div>
           </div>
+
+        <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800">
+          <StoreUIConfigPanel config={config.uiConfig} onSave={handleUpdateUIConfig} />
         </div>
-      </div>
-    </div>
+
+</div>
+</div>
+</div>
   );
 }

@@ -111,6 +111,9 @@ export async function bootstrapTables() {
             created_at BIGINT NOT NULL
           );
           
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS is_unlimited BOOLEAN DEFAULT FALSE;
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS file_path TEXT;
+          
           CREATE TABLE IF NOT EXISTS orders (
             id TEXT PRIMARY KEY,
             product_id TEXT NOT NULL,
@@ -124,6 +127,9 @@ export async function bootstrapTables() {
             transaction_id TEXT NOT NULL,
             created_at BIGINT NOT NULL
           );
+          
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS is_unlimited BOOLEAN DEFAULT FALSE;
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS file_path TEXT;
           
           CREATE TABLE IF NOT EXISTS custom_commands (
             id TEXT PRIMARY KEY,
@@ -178,6 +184,9 @@ export async function bootstrapTables() {
             created_at BIGINT NOT NULL
           );
           
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS is_unlimited BOOLEAN DEFAULT FALSE;
+          ALTER TABLE products ADD COLUMN IF NOT EXISTS file_path TEXT;
+          
           CREATE TABLE IF NOT EXISTS transactions (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -214,6 +223,7 @@ export async function bootstrapTables() {
           ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS deposit_webhook_channel_id TEXT;
           ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS guild_id TEXT;
           ALTER TABLE products ADD COLUMN IF NOT EXISTS code TEXT;
+          ALTER TABLE bot_config ADD COLUMN IF NOT EXISTS ui_config JSONB;
         `);
         console.log('[PostgreSQL] Incremental migrations completed successfully.');
 
@@ -361,7 +371,9 @@ export const dbService = {
           stock: row.stock || [],
           category: row.category || '',
           imageUrl: row.image_url || '',
-          createdAt: Number(row.created_at)
+          createdAt: Number(row.created_at),
+          isUnlimited: row.is_unlimited,
+          filePath: row.file_path
         }));
       } catch (err) {
         console.error('Postgres error:', err); throw err;
@@ -374,11 +386,11 @@ export const dbService = {
     if (pgPool) {
       try {
         await pgPool.query({
-          text: `INSERT INTO products (id, code, name, price, description, type, stock, category, image_url, created_at)
-                 VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9)
+          text: `INSERT INTO products (id, code, name, price, description, type, stock, category, image_url, created_at, is_unlimited, file_path)
+                 VALUES ($1, $10, $2, $3, $4, $5, $6, $7, $8, $9, $11, $12)
                  ON CONFLICT (id) DO UPDATE SET
-                   code = $10, name = $2, price = $3, description = $4, type = $5, stock = $6, category = $7, image_url = $8`,
-          values: [prod.id, prod.name, prod.price, prod.description, prod.type, prod.stock, prod.category, prod.imageUrl || '', prod.createdAt, prod.code || '']
+                   code = $10, name = $2, price = $3, description = $4, type = $5, stock = $6, category = $7, image_url = $8, is_unlimited = $11, file_path = $12`,
+          values: [prod.id, prod.name, prod.price, prod.description, prod.type, prod.stock, prod.category, prod.imageUrl || '', prod.createdAt, prod.code || '', prod.isUnlimited || false, prod.filePath || '']
         });
         return;
       } catch (err) {
@@ -497,6 +509,7 @@ export const dbService = {
             guildId: row.guild_id || '',
             ownerId: row.owner_id || '',
             serverManagement: row.server_management ? (typeof row.server_management === 'string' ? JSON.parse(row.server_management) : row.server_management) : undefined,
+            uiConfig: row.ui_config ? (typeof row.ui_config === 'string' ? JSON.parse(row.ui_config) : row.ui_config) : undefined,
             depositWebhookChannelId: row.deposit_webhook_channel_id || ''
           };
         }
@@ -581,6 +594,16 @@ export const dbService = {
     const data = readLocalFile();
     data.config = config;
     writeLocalFile(data);
+  },
+
+  
+  updateUIConfig: async (uiConfig: any): Promise<void> => {
+    if (pgPool) {
+      await pgPool.query(
+        "UPDATE bot_config SET ui_config = $1 WHERE id = 'bot_settings'",
+        [JSON.stringify(uiConfig)]
+      );
+    }
   },
 
   updateGeneralConfig: async (prefix: string, statusText: string, statusType: string): Promise<void> => {
@@ -777,7 +800,34 @@ export const dbService = {
   getOrders: async (): Promise<Order[]> => {
     if (pgPool) {
       try {
-        const res = await pgPool.query('SELECT * FROM orders ORDER BY created_at DESC');
+        const query = `
+          SELECT 
+            id, product_id, product_name, price, customer_discord_id, 
+            customer_username, status, claimed_stock_item, claimed_at, 
+            transaction_id, created_at,
+            FALSE as is_unlimited, NULL as file_path
+          FROM orders
+          UNION ALL
+          SELECT 
+            pi.transaction_id as id, 
+            'balance_purchase' as product_id, 
+            pi.product_name, 
+            t.amount as price, 
+            t.user_id as customer_discord_id, 
+            t.username as customer_username, 
+            CASE WHEN pi.delivery_status = 'DELIVERED' THEN 'Claimed' ELSE 'Success' END as status, 
+            pi.items::text as claimed_stock_item, 
+            t.timestamp as claimed_at, 
+            pi.transaction_id as transaction_id, 
+            t.timestamp as created_at,
+            FALSE as is_unlimited,
+            NULL as file_path
+          FROM purchased_items pi
+          JOIN transactions t ON pi.transaction_id = t.id
+          WHERE pi.transaction_id NOT IN (SELECT transaction_id FROM orders WHERE transaction_id IS NOT NULL)
+          ORDER BY created_at DESC
+        `;
+        const res = await pgPool.query(query);
         return res.rows.map(row => ({
           id: row.id,
           productId: row.product_id,
@@ -789,7 +839,9 @@ export const dbService = {
           claimedStockItem: row.claimed_stock_item || '',
           claimedAt: row.claimed_at ? Number(row.claimed_at) : undefined,
           transactionId: row.transaction_id,
-          createdAt: Number(row.created_at)
+          createdAt: Number(row.created_at),
+          isUnlimited: row.is_unlimited,
+          filePath: row.file_path
         }));
       } catch (err) {
         console.error('Postgres error:', err); throw err;
@@ -976,66 +1028,70 @@ export const dbService = {
     writeLocalFile(data);
   },
 
-  processPurchase: async (userId: string, username: string, productId: string, qty: number, totalCost: number): Promise<{ success: boolean; stockItems?: string[]; error?: string; transactionId?: string; newBalance?: number }> => {
+    processPurchase: async (userId: string, username: string, productId: string, qty: number, totalCost: number): Promise<{ success: boolean; stockItems?: string[]; error?: string; transactionId?: string; newBalance?: number }> => {
     if (!pgPool) {
-      return { success: false, error: "Database not connected. PostgreSQL is required for safe transactions." };
+      return { success: false, error: "Database not connected." };
     }
 
     const client = await pgPool.connect();
     try {
       await client.query('BEGIN');
 
-      // 1. Lock the user row and check balance
       const userRes = await client.query('SELECT balance FROM users WHERE discord_id = $1 FOR UPDATE', [userId]);
-      if (userRes.rows.length === 0) {
-        throw new Error("User not found");
-      }
+      if (userRes.rows.length === 0) throw new Error("User not found");
       const currentBalance = userRes.rows[0].balance;
-      if (currentBalance < totalCost) {
-        throw new Error("Saldo tidak mencukupi");
-      }
+      if (currentBalance < totalCost) throw new Error("Saldo tidak mencukupi");
 
-      // 2. Lock the product row, check stock and perform atomic update
-      const productRes = await client.query(`
-        WITH old_data AS (
-          SELECT name, stock[1:$1] AS claimed_items, array_length(stock, 1) AS stock_len
-          FROM products 
-          WHERE id = $2 FOR UPDATE
-        )
-        UPDATE products 
-        SET stock = stock[($1 + 1):array_upper(stock, 1)] 
-        WHERE id = $2 AND (SELECT stock_len FROM old_data) >= $1
-        RETURNING (SELECT name FROM old_data) AS name, (SELECT claimed_items FROM old_data) AS claimed_items;
-      `, [qty, productId]);
-
-      if (productRes.rows.length === 0) {
-        throw new Error("Produk tidak ditemukan atau stok tidak cukup. Silahkan kurangi jumlah atau pilih produk lain.");
-      }
+      const checkProductRes = await client.query('SELECT is_unlimited, file_path, name FROM products WHERE id = $1 FOR UPDATE', [productId]);
+      if (checkProductRes.rows.length === 0) throw new Error("Produk tidak ditemukan.");
       
-      const product = productRes.rows[0];
-      const claimedStockItems = product.claimed_items || [];
-      if (claimedStockItems.length < qty) {
-        throw new Error("Stok produk tidak cukup. Silahkan kurangi jumlah atau pilih produk lain.");
+      const pData = checkProductRes.rows[0];
+      let product = { name: pData.name };
+      let claimedStockItems = [];
+      
+      if (pData.is_unlimited) {
+        for (let i = 0; i < qty; i++) {
+           claimedStockItems.push(`[FILE_ATTACHMENT]:${pData.file_path}`);
+        }
+      } else {
+         const productRes = await client.query(`
+          WITH old_data AS (
+            SELECT name, stock[1:$1] AS claimed_items, array_length(stock, 1) AS stock_len
+            FROM products 
+            WHERE id = $2 FOR UPDATE
+          )
+          UPDATE products 
+          SET stock = stock[($1 + 1):array_upper(stock, 1)] 
+          WHERE id = $2 AND (SELECT stock_len FROM old_data) >= $1
+          RETURNING (SELECT name FROM old_data) AS name, (SELECT claimed_items FROM old_data) AS claimed_items;
+        `, [qty, productId]);
+
+        if (productRes.rows.length === 0) {
+          throw new Error("Produk tidak ditemukan atau stok tidak cukup. Silahkan kurangi jumlah atau pilih produk lain.");
+        }
+        
+        const row = productRes.rows[0];
+        product = { name: row.name };
+        claimedStockItems = row.claimed_items || [];
+        if (claimedStockItems.length < qty) {
+          throw new Error("Stok produk tidak cukup. Silahkan kurangi jumlah atau pilih produk lain.");
+        }
       }
 
-      // 5. Update User Balance
       const newBalance = currentBalance - totalCost;
       await client.query('UPDATE users SET balance = $1 WHERE discord_id = $2', [newBalance, userId]);
 
-      // 6. Record Transaction
       const txId = `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       await client.query(`
         INSERT INTO transactions (id, user_id, username, amount, type, description, timestamp)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
       `, [txId, userId, username, totalCost, 'PURCHASE', `Pembelian produk: ${qty}x ${product.name}`, Date.now()]);
 
-      // 6.5 Record Purchased Items for Delivery Recovery
       await client.query(`
         INSERT INTO purchased_items (transaction_id, user_id, product_name, items, delivery_status)
         VALUES ($1, $2, $3, $4, 'PENDING_DELIVERY')
       `, [txId, userId, product.name, JSON.stringify(claimedStockItems)]);
 
-      // 7. Update Stats (Optional, increment orders)
       await client.query(`
         UPDATE bot_stats SET 
         total_orders = total_orders + 1,
@@ -1044,11 +1100,9 @@ export const dbService = {
       `, [totalCost]);
 
       await client.query('COMMIT');
-
       return { success: true, stockItems: claimedStockItems, transactionId: txId, newBalance };
     } catch (err: any) {
       await client.query('ROLLBACK');
-      console.error('Purchase transaction failed:', err);
       return { success: false, error: err.message || "Gagal memproses pembelian" };
     } finally {
       client.release();
@@ -1057,23 +1111,14 @@ export const dbService = {
 
   processTopup: async (messageId: string, accountName: string, amount: number): Promise<{ success: boolean; error?: string; userId?: string }> => {
     if (!pgPool) return { success: false, error: "Database not connected." };
-    
     const client = await pgPool.connect();
     try {
       await client.query('BEGIN');
       
-      const checkRes = await client.query('SELECT message_id FROM processed_webhooks WHERE message_id = $1 FOR UPDATE', [messageId]);
-      if (checkRes.rows.length > 0) {
-        throw new Error("Message already processed");
-      }
-      
-      await client.query('INSERT INTO processed_webhooks (message_id, processed_at) VALUES ($1, $2)', [messageId, Date.now()]);
-      
-      const userRes = await client.query('SELECT discord_id, balance FROM users WHERE LOWER(account_name) = LOWER($1) FOR UPDATE', [accountName]);
+      const userRes = await client.query('SELECT * FROM users WHERE account_name = $1 FOR UPDATE', [accountName]);
       if (userRes.rows.length === 0) {
-        throw new Error(`User with account name **${accountName}** not found`);
+        throw new Error("User not found with that account name");
       }
-      
       const user = userRes.rows[0];
       const newBalance = user.balance + amount;
       
@@ -1096,54 +1141,48 @@ export const dbService = {
     }
   },
 
-  processClaim: async (orderId: string, userId: string, username: string): Promise<{ success: boolean; claimItem?: string; orderDetails?: Order; error?: string }> => {
-    if (!pgPool) {
-      return { success: false, error: "Database not connected. PostgreSQL is required for safe transactions." };
-    }
+
+  processClaim: async (orderId: string, userId: string, username: string): Promise<{ success: boolean; claimItem?: string; orderDetails?: any; error?: string }> => {
+    if (!pgPool) return { success: false, error: "Database not connected." };
 
     const client = await pgPool.connect();
     try {
       await client.query('BEGIN');
 
-      // 1. Lock the order row
-      const orderRes = await client.query('SELECT * FROM orders WHERE LOWER(id) = LOWER($1) FOR UPDATE', [orderId]);
-      if (orderRes.rows.length === 0) {
-        throw new Error(`ID Pemesanan \`${orderId}\` tidak terdaftar atau nihil dalam sistem.`);
-      }
-      
+      const orderRes = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+      if (orderRes.rows.length === 0) throw new Error('Pesanan tidak ditemukan.');
       const orderRow = orderRes.rows[0];
+
       if (orderRow.status === 'Claimed') {
-        if (orderRow.customer_discord_id && orderRow.customer_discord_id !== userId) {
-          throw new Error(`Pesanan \`${orderId}\` sudah diklaim oleh pengguna lain.`);
-        }
-        throw new Error(`Pesanan \`${orderId}\` sudah pernah diklaim sebelumnya. Silakan cek riwayat DM Anda dari bot, atau hubungi Admin jika Anda kehilangan produk.`);
+        throw new Error('Pesanan sudah diklaim sebelumnya.');
       }
 
-      // 2. Lock the product row and perform atomic stock update
-      const productRes = await client.query(`
-        WITH old_data AS (
-          SELECT stock[1:1] AS claimed_items, array_length(stock, 1) AS stock_len
-          FROM products 
-          WHERE id = $1 FOR UPDATE
-        )
-        UPDATE products 
-        SET stock = stock[2:array_upper(stock, 1)] 
-        WHERE id = $1 AND (SELECT stock_len FROM old_data) > 0
-        RETURNING (SELECT claimed_items FROM old_data) AS claimed_items;
-      `, [orderRow.product_id]);
+      const checkProductRes = await client.query('SELECT is_unlimited, file_path, name FROM products WHERE id = $1 FOR UPDATE', [orderRow.product_id]);
+      if (checkProductRes.rows.length === 0) throw new Error('Produk untuk pemesanan ini tidak ditemukan.');
+      const pData = checkProductRes.rows[0];
+      let claimItem = '';
+      if (pData.is_unlimited) {
+         claimItem = `[FILE_ATTACHMENT]:${pData.file_path}`;
+      } else {
+        const productRes = await client.query(`
+          WITH old_data AS (
+            SELECT stock[1:1] AS claimed_items, array_length(stock, 1) AS stock_len
+            FROM products 
+            WHERE id = $1 FOR UPDATE
+          )
+          UPDATE products 
+          SET stock = stock[2:array_upper(stock, 1)] 
+          WHERE id = $1 AND (SELECT stock_len FROM old_data) > 0
+          RETURNING (SELECT claimed_items FROM old_data) AS claimed_items;
+        `, [orderRow.product_id]);
 
-      if (productRes.rows.length === 0) {
-        throw new Error('Produk untuk pemesanan ini tidak ditemukan atau stok sementara habis. Silakan infokan ke owner/admin toko.');
+        if (productRes.rows.length === 0) throw new Error('Produk untuk pemesanan ini tidak ditemukan atau stok sementara habis.');
+        
+        const claimedItems = productRes.rows[0].claimed_items || [];
+        if (claimedItems.length === 0) throw new Error('Stok produk ini sementara habis.');
+        claimItem = claimedItems[0];
       }
-      
-      const claimedItems = productRes.rows[0].claimed_items || [];
-      if (claimedItems.length === 0) {
-        throw new Error('Stok produk ini sementara habis. Silakan infokan ke owner/admin toko.');
-      }
 
-      const claimItem = claimedItems[0];
-
-      // 5. Update Order
       const now = Date.now();
       await client.query(`
         UPDATE orders 
@@ -1151,7 +1190,6 @@ export const dbService = {
         WHERE id = $5
       `, [claimItem, now, userId, username, orderRow.id]);
 
-      // 6. Update Stats
       await client.query(`
         UPDATE bot_stats SET 
         total_orders = total_orders + 1,
@@ -1161,7 +1199,7 @@ export const dbService = {
 
       await client.query('COMMIT');
 
-      const orderDetails: Order = {
+      const orderDetails: any = {
         id: orderRow.id,
         productId: orderRow.product_id,
         productName: orderRow.product_name,
@@ -1178,7 +1216,6 @@ export const dbService = {
       return { success: true, claimItem, orderDetails };
     } catch (err: any) {
       await client.query('ROLLBACK');
-      console.error('Claim transaction failed:', err);
       return { success: false, error: err.message };
     } finally {
       client.release();
@@ -1195,11 +1232,15 @@ export const dbService = {
       await client.query('UPDATE users SET balance = balance + $1 WHERE discord_id = $2', [totalCost, userId]);
 
       // Update Product Stock (Lock products second)
-      await client.query(`
-        UPDATE products 
-        SET stock = array_cat($1::text[], stock) 
-        WHERE id = $2
-      `, [stockItems, productId]);
+            if (stockItems && stockItems.length > 0 && stockItems[0].startsWith('[FILE_ATTACHMENT]:')) {
+        // No stock to return for unlimited products
+      } else {
+        await client.query(`
+          UPDATE products 
+          SET stock = array_cat($1::text[], stock) 
+          WHERE id = $2
+        `, [stockItems, productId]);
+      }
       
       // Refund log
       const txId = `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -1240,7 +1281,9 @@ export const dbService = {
           discordId: row.discord_id,
           accountName: row.account_name,
           balance: row.balance,
-          createdAt: Number(row.created_at)
+          createdAt: Number(row.created_at),
+          isUnlimited: row.is_unlimited,
+          filePath: row.file_path
         }));
       } catch (err) {
         console.error('Postgres error:', err); throw err;

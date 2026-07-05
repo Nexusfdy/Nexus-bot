@@ -71,8 +71,13 @@ export function useSimulatorChat({
       if (products.length > 0) {
         const stockList = products.map(p => {
             const count = p.stock?.length || 0;
-            const stockStatus = count > 0 ? `✅ In Stock (${count})` : `❌ Out of Stock (0)`;
-            return `📦 **${p.name}**\n- Kode: ${p.id.substring(0, 4).toUpperCase()}\n- Harga: **Rp${p.price.toLocaleString('id-ID')}**\n- Stok: ${stockStatus}`;
+            let stockStatus = '';
+            if (p.isUnlimited) {
+              stockStatus = '♾️ Tersedia (Unlimited)';
+            } else {
+              stockStatus = count > 0 ? `✅ In Stock (${count})` : `❌ Out of Stock (0)`;
+            }
+            return `📦 **${p.name}**\n- Kode: ${p.code || p.id.substring(0, 4).toUpperCase()}\n- Harga: **Rp${p.price.toLocaleString('id-ID')}**\n- Stok: ${stockStatus}`;
         }).join('\n\n');
         desc = `👑 **Terakhir Update:** Just now\n\n**Daftar Produk Kami**\n${stockList}`;
       }

@@ -1,33 +1,19 @@
 #!/bin/bash
+echo "🔄 Melakukan update NEXUS Bot..."
+echo ""
 
-# Update script for Nexus Bot
+echo "📥 Menarik kode terbaru..."
+git pull
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-echo -e "${YELLOW}Memulai proses update...${NC}"
-
-echo -e "${YELLOW}1. Menarik update dari repositori (jika ada)...${NC}"
-git pull origin main || echo -e "${YELLOW}Tidak bisa git pull. Pastikan ini adalah repositori git.${NC}"
-
-echo -e "${YELLOW}2. Install dependensi baru (jika ada)...${NC}"
+echo "📦 Menginstall dependencies (jika ada yang baru)..."
 npm install
 
-echo -e "${YELLOW}3. Build ulang aplikasi...${NC}"
+echo "🛠️ Membangun (build) ulang aplikasi..."
 npm run build
 
-echo -e "${YELLOW}4. Pengecekan port aplikasi dari .env...${NC}"
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-fi
+echo "♻️ Merestart service PM2..."
+pm2 restart nexus-bot --update-env
 
-APP_PORT=${PORT:-3000}
-echo -e "${GREEN}Port yang akan digunakan PM2: $APP_PORT${NC}"
-
-echo -e "${YELLOW}5. Restart PM2 dan memuat environment terbaru...${NC}"
-NODE_ENV=production pm2 restart nexus-bot --update-env || NODE_ENV=production pm2 start dist/server.cjs --name "nexus-bot"
-
-echo -e "${GREEN}Update selesai! Aplikasi sekarang berjalan di background.${NC}"
-echo -e "${YELLOW}Gunakan 'pm2 logs nexus-bot' untuk memantau log.${NC}"
+echo ""
+echo "✅ Update Selesai!"
+echo "Aplikasi telah diperbarui dan direstart."

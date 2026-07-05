@@ -1,3 +1,32 @@
+
+export interface StoreUIConfig {
+  storeName: string;
+  storeDescription: string;
+  storeFooter: string;
+  storeColor: string;
+  storeThumbnail: string;
+  storeBanner: string;
+  emptyStockMessage: string;
+
+  paymentProvider: string;
+  paymentUrl: string;
+  paymentTitle: string;
+  paymentDescription: string;
+  paymentButtonText: string;
+
+  liveStockTitle: string;
+  liveStockDescription: string;
+  liveStockFooter: string;
+  showLastUpdate: boolean;
+  stockAvailableEmoji: string;
+  stockEmptyEmoji: string;
+
+  registerButtonText: string;
+  topupButtonText: string;
+  balanceButtonText: string;
+  buyButtonText: string;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -13,6 +42,8 @@ export interface User {
   accountName: string;
   balance: number;
   createdAt: number;
+  isUnlimited?: boolean;
+  filePath?: string;
 }
 
 export interface Product {
@@ -21,11 +52,13 @@ export interface Product {
   name: string;
   price: number;
   description: string;
-  type: 'License Key' | 'Download Link' | 'Accounts';
+  type: 'License Key' | 'Download Link' | 'Accounts' | 'File' | 'Source Code' | string;
   stock: string[]; // List of stock items, e.g. ["KEY-123", "KEY-456"]
   category: string;
   imageUrl?: string;
   createdAt: number;
+  isUnlimited?: boolean;
+  filePath?: string;
 }
 
 export interface Order {
@@ -40,6 +73,8 @@ export interface Order {
   claimedAt?: number;
   transactionId: string;
   createdAt: number;
+  isUnlimited?: boolean;
+  filePath?: string;
 }
 
 export interface CustomCommand {
@@ -70,6 +105,7 @@ export interface BotConfig {
   liveStockChannel?: string; // New field
   liveStockMessageId?: string; // The ID of the live stock message
   autoMod: AutoModSettings;
+  uiConfig?: StoreUIConfig;
   botToken?: string;
   ownerId?: string; // Discord ID of the bot owner
   serverManagement?: {
@@ -105,3 +141,32 @@ export interface DiscordBotUser {
   guildsCount?: number;
 }
 
+
+
+export const defaultUIConfig: StoreUIConfig = {
+  storeName: "🤖 NIXS PREMIUM STORE",
+  storeDescription: "Selamat datang di NIXS Store! Kami menyediakan berbagai produk digital terbaik dengan sistem otomatis 24/7.",
+  storeFooter: "Nixs Store System • Auto Update",
+  storeColor: "#2b2d31",
+  storeThumbnail: "",
+  storeBanner: "",
+  emptyStockMessage: "⚠️ **Belum ada produk saat ini.**\n*Silakan cek kembali nanti.*",
+
+  paymentProvider: "saweria",
+  paymentUrl: "https://saweria.co/",
+  paymentTitle: "💳 Top Up Saldo",
+  paymentDescription: "Silakan melakukan donasi melalui {provider}.\n\nGunakan nama akun Discord yang sudah terdaftar agar saldo otomatis masuk.\n\nSetelah pembayaran berhasil, saldo biasanya masuk dalam beberapa detik.\nJika lebih dari 1 menit belum masuk silakan hubungi admin.",
+  paymentButtonText: "🌐 Buka {provider}",
+
+  liveStockTitle: "🤖 NIXS PREMIUM STORE",
+  liveStockDescription: "Selamat datang di NIXS Store! Kami menyediakan berbagai produk digital terbaik dengan sistem otomatis 24/7.",
+  liveStockFooter: "Nixs Store System • Auto Update",
+  showLastUpdate: true,
+  stockAvailableEmoji: "✅",
+  stockEmptyEmoji: "🔴",
+
+  registerButtonText: "👤 Register",
+  topupButtonText: "💳 Top Up Saldo",
+  balanceButtonText: "💰 Saldo",
+  buyButtonText: "🛒 Beli"
+};

@@ -1,4 +1,5 @@
 import { Client, AttachmentBuilder } from "discord.js";
+import AdmZip from "adm-zip";
 import { dbService } from "../../src/db/db_service.ts";
 
 export async function runDeliveryRecovery(client: Client) {
@@ -16,9 +17,17 @@ export async function runDeliveryRecovery(client: Client) {
       try {
         const user = await client.users.fetch(order.userId);
         const dmChannel = await user.createDM();
-        const itemsText = order.items.join('\n');
-        const buffer = Buffer.from(itemsText, 'utf-8');
-        const attachment = new AttachmentBuilder(buffer, { name: `${order.productName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_items_recovery.txt` });
+        let attachment;
+        if (order.items.length > 0 && order.items[0].startsWith('[FILE_ATTACHMENT]:')) {
+           const filePath = order.items[0].split('[FILE_ATTACHMENT]:')[1];
+           attachment = new AttachmentBuilder(filePath);
+        } else {
+           const itemsText = order.items.join('\n');
+           const zip = new AdmZip();
+           zip.addFile(`${order.productName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_items_recovery.txt`, Buffer.from(itemsText, 'utf-8'));
+           const zipBuffer = zip.toBuffer();
+           attachment = new AttachmentBuilder(zipBuffer, { name: `${order.productName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_pesanan_recovery.zip` });
+        }
         
         await dmChannel.send({
           content: `📦 **[RECOVERY]** Berikut adalah pesanan kamu yang tertunda sebelumnya untuk produk **${order.productName}**:`,

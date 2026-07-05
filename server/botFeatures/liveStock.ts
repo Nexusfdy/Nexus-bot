@@ -1,5 +1,6 @@
 import { Client, TextChannel, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { dbService } from "../../src/db/db_service.ts";
+import { defaultUIConfig } from "../../src/types.ts";
 import path from "path";
 
 let liveStockInterval: NodeJS.Timeout | null = null;
@@ -65,23 +66,54 @@ export async function updateLiveStock(client: Client) {
     const products = await dbService.getProducts();
     const availableProducts = products.filter(p => (p.stock?.length || 0) > 0);
     
+
+    const ui = config.uiConfig || defaultUIConfig;
+    
     const embed = new EmbedBuilder()
-      .setTitle("🤖 Nixs Store")
-      .setColor("#00FF00")
-      .setFooter({ text: "AutoStore by GUE NDIRI | " + new Date().toLocaleString() })
+      .setTitle(ui.storeName || defaultUIConfig.storeName)
+      .setDescription((ui.storeDescription || defaultUIConfig.storeDescription) + "\n\n")
+      .setColor((ui.storeColor || defaultUIConfig.storeColor) as any)
+      .setFooter({ text: ui.storeFooter || defaultUIConfig.storeFooter, iconURL: client.user?.displayAvatarURL() || undefined })
       .setTimestamp();
+      
+    if (ui.storeThumbnail && ui.storeThumbnail.startsWith('http')) {
+      embed.setThumbnail(ui.storeThumbnail);
+    } else {
+      embed.setThumbnail(client.user?.displayAvatarURL() || null);
+    }
+    
+    if (ui.storeBanner && ui.storeBanner.startsWith('http')) {
+      embed.setImage(ui.storeBanner);
+    }
 
     if (products.length === 0) {
-        embed.setDescription("👑 **Terakhir Update:** " + `<t:${Math.floor(Date.now() / 1000)}:R>\n\n` +
-          "Daftar Produk Kami\n" + "⚠️ **Belum ada produk saat ini.**");
+        let desc = embed.data.description;
+        if (ui.showLastUpdate) {
+            desc += "👑 **Last Update:** " + `<t:${Math.floor(Date.now() / 1000)}:R>\n\n`;
+        }
+        desc += ui.emptyStockMessage || defaultUIConfig.emptyStockMessage;
+        embed.setDescription(desc);
     } else {
+        const availableEmoji = ui.stockAvailableEmoji || defaultUIConfig.stockAvailableEmoji;
+        const emptyEmoji = ui.stockEmptyEmoji || defaultUIConfig.stockEmptyEmoji;
+        
         let stockList = products.map(p => {
             const count = p.stock?.length || 0;
-            const stockStatus = count > 0 ? `✅ In Stock (${count})` : `❌ Out of Stock (0)`;
-            return `📦 **${p.name}**\n- Kode: ${p.id.substring(0, 4).toUpperCase()}\n- Harga: **Rp${p.price.toLocaleString('id-ID')}**\n- Stok: ${stockStatus}`;
+            let stockStatus = '';
+            if (p.isUnlimited) {
+              stockStatus = `\`♾️ Unlimited\``;
+            } else {
+              stockStatus = count > 0 ? `\`${count} ${availableEmoji}\`` : `\`${emptyEmoji} Habis\``;
+            }
+            return `**${p.name}**\n↳ 🛒 **Rp ${p.price.toLocaleString('id-ID')}** | 📦 Stok: ${stockStatus}`;
         }).join('\n\n');
         
-        const descriptionText = `👑 **Terakhir Update:** <t:${Math.floor(Date.now() / 1000)}:R>\n\n**Daftar Produk Kami**\n${stockList}`;
+        let descriptionText = embed.data.description || "";
+        if (ui.showLastUpdate) {
+             descriptionText += `👑 **Last Update:** <t:${Math.floor(Date.now() / 1000)}:R>\n\n`;
+        }
+        descriptionText += `**🛒 DAFTAR PRODUK**\n\n${stockList}`;
+        
         embed.setDescription(descriptionText.length > 4000 ? descriptionText.substring(0, 4000) + '...\n*(Terpotong, terlalu banyak item)*' : descriptionText);
     }
 
@@ -89,11 +121,11 @@ export async function updateLiveStock(client: Client) {
     .addComponents(
       new ButtonBuilder()
         .setCustomId('register_account')
-        .setLabel('👤 Register')
+        .setLabel(ui.registerButtonText || defaultUIConfig.registerButtonText)
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId('topup_qris')
-        .setLabel('💳 Topup QRIS')
+        .setCustomId('topup_saldo')
+        .setLabel(ui.topupButtonText || defaultUIConfig.topupButtonText)
         .setStyle(ButtonStyle.Success)
     );
 
@@ -101,13 +133,14 @@ export async function updateLiveStock(client: Client) {
     .addComponents(
       new ButtonBuilder()
         .setCustomId('cek_saldo')
-        .setLabel('💰 Saldo')
+        .setLabel(ui.balanceButtonText || defaultUIConfig.balanceButtonText)
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('belanja_sekarang')
-        .setLabel('🛒 Beli')
+        .setLabel(ui.buyButtonText || defaultUIConfig.buyButtonText)
         .setStyle(ButtonStyle.Danger)
     );
+
 
   let oldMessageId = config.liveStockMessageId || null;
   

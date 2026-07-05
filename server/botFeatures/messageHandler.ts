@@ -1,3 +1,6 @@
+
+import { PaymentProviderFactory } from "../paymentProviders/PaymentProviderFactory.ts";
+import { defaultUIConfig } from "../../src/types.ts";
 import { Message, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, GuildMember } from "discord.js";
 import { dbService } from "../../src/db/db_service.ts";
 import { ModLog } from "../../src/types.ts";
@@ -53,11 +56,11 @@ const handleViolation = async (message: Message, reason: string, warnLimit: numb
   try {
     await message.delete().catch(() => {});
     
-    const warnResponse = await message.channel.send(
+    const warnResponse = message.channel.isTextBased() ? await (message.channel as any).send(
       `⚠️ **Auto-Moderasi**: <@${userId}>, pesan Anda dihapus. Alasan: ${reason}. (Peringatan ${strikes.count}/${warnLimit})`
-    );
+    ) : null;
     const timer = setTimeout(() => { 
-      warnResponse.delete().catch(() => {});
+      if (warnResponse) warnResponse.delete().catch(() => {});
       activeTimeouts.delete(timer);
     }, 6000);
     activeTimeouts.add(timer);
@@ -67,7 +70,7 @@ const handleViolation = async (message: Message, reason: string, warnLimit: numb
       id: generatedLogId,
       userId: userId,
       username: username,
-      action: "DELETE_MESSAGE & STRIKE",
+      action: "DELETE_MESSAGE",
       reason: reason,
       timestamp: Date.now()
     };
@@ -87,12 +90,12 @@ const handleViolation = async (message: Message, reason: string, warnLimit: numb
           id: "mod-" + Math.random().toString(36).substring(4),
           userId: userId,
           username: username,
-          action: "TIMEOUT",
+          action: "MUTE",
           reason: `AutoMod limit reached (${warnLimit} peringatan)`,
           timestamp: Date.now()
         });
         
-        await message.channel.send(`🚫 **AutoMod Action**: Member **${username}** telah di-timeout karena mengulangi pelanggaran (limit tercapai).`);
+        if (message.channel.isTextBased()) await (message.channel as any).send(`🚫 **AutoMod Action**: Member **${username}** telah di-timeout karena mengulangi pelanggaran (limit tercapai).`);
       }
     }
   } catch (modErr) {
@@ -112,76 +115,29 @@ export const handleMessageCreate = async (message: Message) => {
 
   // Saweria Webhook Listener MVP
   if (message.webhookId && currentConfig.depositWebhookChannelId && message.channel.id === currentConfig.depositWebhookChannelId) {
-    // Saweria Webhook messages contain the donation details usually in an embed or raw text
-    let contentToParse = message.content || "";
+    const ui = currentConfig.uiConfig || defaultUIConfig;
+    const providerName = ui.paymentProvider || defaultUIConfig.paymentProvider;
     
-    console.log(`[Saweria] Received webhook message ${message.id}`);
-    console.log(`[Saweria] Raw content: "${contentToParse}"`);
+    const paymentProvider = PaymentProviderFactory.getProvider(providerName);
+    const parseResult = paymentProvider.parseWebhookMessage(message);
 
-    if (message.embeds && message.embeds.length > 0) {
-      const embed = message.embeds[0];
-      
-      const embedParts = [
-        embed.title,
-        embed.description,
-        embed.author?.name,
-        embed.footer?.text,
-        ...(embed.fields?.map(f => `${f.name} ${f.value}`) || [])
-      ].filter(Boolean).join('\n');
-      
-      console.log(`[Saweria] Embed parts extracted: "${embedParts}"`);
-      contentToParse += `\n${embedParts}`;
-    }
+    if (parseResult.success && parseResult.donorName && parseResult.amount) {
+      const { donorName, amount } = parseResult;
+      try {
+        const topupRes = await dbService.processTopup(message.id, donorName, amount);
+        console.log(`[${paymentProvider.name.toUpperCase()}] processTopup result for ${donorName}:`, JSON.stringify(topupRes));
 
-    // Strip markdown formatting for easier regex matching
-    contentToParse = contentToParse.replace(/[*_`~]/g, '');
-
-    const patterns = [
-      /Donasi\s+Masuk\s+Dari\s+(.*?)\s+Sebesar\s+(?:Rp|IDR)?\s*([\d.,]+)/i,
-      /(.*?)\s+just\s+donated\s+(?:Rp|IDR)\s*([\d.,]+)/i,
-      /(.*?)\s+telah\s+berdonasi\s+sebesar\s+(?:Rp|IDR)\s*([\d.,]+)/i,
-      /(.*?)\s+berdonasi\s+(?:Rp|IDR)\s*([\d.,]+)/i
-    ];
-
-    let saweriaMatch = null;
-    let matchedPatternIndex = -1;
-    for (let i = 0; i < patterns.length; i++) {
-      const match = contentToParse.match(patterns[i]);
-      if (match) {
-        saweriaMatch = match;
-        matchedPatternIndex = i;
-        break;
-      }
-    }
-
-    if (saweriaMatch) {
-      const donorName = saweriaMatch[1].trim();
-      const amountStr = saweriaMatch[2].replace(/[^\d]/g, ''); // bersihkan titik/koma
-      const amount = parseInt(amountStr, 10);
-      
-      console.log(`[Saweria] Regex matched (Pattern ${matchedPatternIndex})! Username: "${donorName}", Amount: ${amount}`);
-
-      if (!isNaN(amount) && amount > 0) {
-        try {
-          const topupRes = await dbService.processTopup(message.id, donorName, amount);
-          console.log(`[Saweria] processTopup result for ${donorName}:`, JSON.stringify(topupRes));
-
-          if (topupRes.success) {
-            await message.reply(`✅ **Auto-Topup Success!** Saldo untuk user **${donorName}** (ID: ${topupRes.userId}) telah ditambahkan sebesar **Rp ${amount.toLocaleString('id-ID')}**.`);
-          } else if (topupRes.error === "Message already processed") {
-            console.log(`[Saweria] Message ${message.id} already processed.`);
-          } else {
-            console.error(`[Saweria] PostgreSQL Topup Failed for ${donorName}: ${topupRes.error}`);
-            await message.reply(`⚠️ **Auto-Topup Failed!** Gagal menambahkan saldo untuk **${donorName}**: ${topupRes.error}`);
-          }
-        } catch (err: any) {
-          console.error(`[Saweria] Uncaught exception processing Saweria Topup for ${donorName}:`, err);
+        if (topupRes.success) {
+          await message.reply(`✅ **Auto-Topup Success!** Saldo untuk user **${donorName}** (ID: ${topupRes.userId}) telah ditambahkan sebesar **Rp ${amount.toLocaleString('id-ID')}**.`);
+        } else if (topupRes.error === "Message already processed") {
+          console.log(`[${paymentProvider.name.toUpperCase()}] Message ${message.id} already processed.`);
+        } else {
+          console.error(`[${paymentProvider.name.toUpperCase()}] PostgreSQL Topup Failed for ${donorName}: ${topupRes.error}`);
+          await message.reply(`⚠️ **Auto-Topup Failed!** Gagal menambahkan saldo untuk **${donorName}**: ${topupRes.error}`);
         }
-      } else {
-        console.log(`[Saweria] Parsed amount is invalid: ${amountStr}`);
+      } catch (err: any) {
+        console.error(`[${paymentProvider.name.toUpperCase()}] Uncaught exception processing Topup for ${donorName}:`, err);
       }
-    } else {
-      console.log(`[Saweria] Parsing failed. Content did not match any known format: "${contentToParse}"`);
     }
     return; // Don't process command if it's a webhook
   }

@@ -14,7 +14,10 @@ export default function ProductCard({ prod, onEdit, onDelete, onManageStock }: P
   let stockBadgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
   let stockStatus = 'Habis (Out of Stock)';
   
-  if (stockCount > 2) {
+  if (prod.isUnlimited) {
+    stockBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    stockStatus = 'Tersedia (Unlimited)';
+  } else if (stockCount > 2) {
     stockBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     stockStatus = `${stockCount} Item Tersedia`;
   } else if (stockCount > 0) {

@@ -37,7 +37,8 @@ process.on("uncaughtException", (err) => {
   console.error("[Anti-Crash Safeguard] Uncaught Exception thrown:", err);
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '1000mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1000mb' }));
 
 app.use("/api", apiLimiter, apiRouter);
 
