@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --minify --outfile=dist/server.cjs",
+    "build:encrypt": "npm run build && npx javascript-obfuscator dist/server.cjs --output dist/server.cjs --compact true --self-defending true --disable-console-output true --debug-protection true",
     "start": "NODE_ENV=production node dist/server.cjs",
     "lint": "tsc --noEmit"
   },
