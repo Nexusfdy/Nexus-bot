@@ -1,5 +1,5 @@
-import React from 'react';
-import { Settings, Activity } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, Activity, RefreshCw } from 'lucide-react';
 import { fetchWithAuth as fetch } from '../../lib/api';
 
 interface BotProfileHeaderProps {
@@ -7,6 +7,25 @@ interface BotProfileHeaderProps {
 }
 
 export default function BotProfileHeader({ setIsEditing }: BotProfileHeaderProps) {
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/bot/sync", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ " + data.message);
+      } else {
+        alert("⚠️ Gagal sinkronisasi: " + (data.error || "Unknown error"));
+      }
+    } catch (e: any) {
+      alert("⚠️ Error: " + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -14,6 +33,15 @@ export default function BotProfileHeader({ setIsEditing }: BotProfileHeaderProps
         <p className="text-xs text-slate-400">Bot Anda saat ini aktif dan terhubung ke integrasi e-commerce Nexus</p>
       </div>
       <div className="flex gap-2">
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="px-3.5 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all group disabled:opacity-50"
+          title="Sinkronisasi Data Bot"
+        >
+          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+          <span>{syncing ? 'Menyinkronkan...' : 'Sinkronisasi'}</span>
+        </button>
         <button
           onClick={async () => {
             try {

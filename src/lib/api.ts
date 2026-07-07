@@ -6,7 +6,14 @@ export const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const response = await fetch(url, { ...options, headers });
+  let finalUrl = url;
+  if (!options.method || options.method.toUpperCase() === 'GET') {
+    const urlObj = new URL(url, window.location.origin);
+    urlObj.searchParams.append('_t', Date.now().toString());
+    finalUrl = urlObj.toString();
+  }
+
+  const response = await fetch(finalUrl, { ...options, headers });
   
   if (response.status === 401) {
     localStorage.removeItem("adminToken");

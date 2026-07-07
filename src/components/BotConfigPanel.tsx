@@ -3,6 +3,7 @@ import { BotConfig } from '../types';
 import BotProfileCard from './config/BotProfileCard';
 import BotConfigForm from './config/BotConfigForm';
 import WebhookSettings from './config/WebhookSettings';
+import AdminPasswordPanel from './config/AdminPasswordPanel';
 
 interface BotConfigPanelProps {
   config: BotConfig;
@@ -84,12 +85,15 @@ export default function BotConfigPanel({
       )}
 
       {isEditing && (
-        <WebhookSettings 
-          webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} 
-          greetingMessage={greetingMessage} setGreetingMessage={setGreetingMessage}
-          onTriggerWebhookTest={onTriggerWebhookTest} setIsDirty={setIsDirty}
-          onUpdatePartialConfig={onUpdatePartialConfig}
-        />
+        <>
+          <WebhookSettings 
+            webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} 
+            greetingMessage={greetingMessage} setGreetingMessage={setGreetingMessage}
+            onTriggerWebhookTest={onTriggerWebhookTest} setIsDirty={setIsDirty}
+            onUpdatePartialConfig={onUpdatePartialConfig}
+          />
+          <AdminPasswordPanel />
+        </>
       )}
     </div>
   );

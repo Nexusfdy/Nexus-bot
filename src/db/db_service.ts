@@ -208,7 +208,15 @@ export async function bootstrapTables() {
             message_id TEXT PRIMARY KEY,
             processed_at BIGINT NOT NULL
           );
+
+          CREATE TABLE IF NOT EXISTS admin_auth (
+            id TEXT PRIMARY KEY,
+            password_hash TEXT,
+            reset_token TEXT,
+            reset_token_expiry BIGINT
+          );
         `);
+
         console.log('[PostgreSQL] Tables checked/created successfully.');
 
         // Dynamic migration queries to ensure newly added columns exist in legacy PostgreSQL tables.
@@ -1404,6 +1412,64 @@ export const dbService = {
         await pgPool.query("UPDATE purchased_items SET delivery_status = 'DELIVERED' WHERE transaction_id = $1", [transactionId]);
       } catch (err) {
         console.error('Postgres error:', err); throw err;
+      }
+    }
+  },
+
+  getAdminAuth: async (): Promise<{ password_hash?: string, reset_token?: string, reset_token_expiry?: number } | null> => {
+    if (pgPool) {
+      try {
+        const res = await pgPool.query("SELECT * FROM admin_auth WHERE id = 'admin_auth' LIMIT 1");
+        if (res.rows.length > 0) {
+          const r = res.rows[0];
+          return {
+            password_hash: r.password_hash || undefined,
+            reset_token: r.reset_token || undefined,
+            reset_token_expiry: r.reset_token_expiry ? Number(r.reset_token_expiry) : undefined
+          };
+        }
+        return null;
+      } catch (err) {
+        console.error('Postgres error in getAdminAuth:', err); return null;
+      }
+    }
+    return null;
+  },
+  
+  updateAdminPassword: async (passwordHash: string): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "INSERT INTO admin_auth (id, password_hash) VALUES ('admin_auth', $1) ON CONFLICT (id) DO UPDATE SET password_hash = $1",
+          [passwordHash]
+        );
+      } catch (err) {
+        console.error('Postgres error in updateAdminPassword:', err); throw err;
+      }
+    }
+  },
+
+  setAdminResetToken: async (token: string, expiry: number): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "INSERT INTO admin_auth (id, reset_token, reset_token_expiry) VALUES ('admin_auth', $1, $2) ON CONFLICT (id) DO UPDATE SET reset_token = $1, reset_token_expiry = $2",
+          [token, expiry]
+        );
+      } catch (err) {
+        console.error('Postgres error in setAdminResetToken:', err); throw err;
+      }
+    }
+  },
+
+  clearAdminResetToken: async (): Promise<void> => {
+    if (pgPool) {
+      try {
+        await pgPool.query(
+          "UPDATE admin_auth SET reset_token = NULL, reset_token_expiry = NULL WHERE id = 'admin_auth'"
+        );
+      } catch (err) {
+        console.error('Postgres error in clearAdminResetToken:', err); throw err;
       }
     }
   },

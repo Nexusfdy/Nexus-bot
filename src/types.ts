@@ -112,6 +112,7 @@ export interface BotConfig {
     welcomeChannelId?: string;
     logChannelId?: string;
     leaveChannelId?: string;
+    buyerRoleId?: string;
   };
 }
 

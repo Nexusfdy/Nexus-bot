@@ -1,0 +1,77 @@
+======================================================
+     PANDUAN INSTALASI NEXUS BOT DI VPS & RDP
+======================================================
+
+Persyaratan Sistem (Berlaku untuk VPS & RDP):
+1. Node.js (Minimal v18 LTS disarankan)
+2. PostgreSQL (Database wajib diinstal dan berjalan)
+3. PM2 (Opsional tapi sangat disarankan agar bot jalan di background, install dengan: npm install -g pm2)
+
+------------------------------------------------------
+BAGIAN A: INSTALASI DI VPS (LINUX / UBUNTU)
+------------------------------------------------------
+
+[ 1. Versi Full Source Code (Unencrypted) ]
+1. Upload dan ekstrak file bot ke VPS Anda.
+2. Buka terminal/SSH dan arahkan ke folder bot:
+   cd /path/ke/folder/bot
+3. Install semua dependencies:
+   npm install
+4. Buat dan konfigurasi file .env:
+   - Buat file bernama .env di dalam folder utama.
+   - Isi DATABASE_URL dengan URL koneksi PostgreSQL Anda
+     Contoh: DATABASE_URL=postgres://username:password@localhost:5432/nexusdb
+5. Build aplikasi (compile TypeScript ke JavaScript):
+   npm run build
+6. Jalankan bot menggunakan PM2:
+   pm2 start npm --name "nexus-bot" -- start
+   pm2 save
+
+[ 2. Versi ENC / Compiled (Siap Jual) ]
+Catatan: Versi ini hanya berisi file package.json, file .env, dan folder dist/.
+1. Upload dan ekstrak file zip/rar versi ENC ke VPS.
+2. Masuk ke folder bot melalui terminal.
+3. Install production dependencies saja (lebih ringan):
+   npm install --omit=dev
+4. Konfigurasi file .env dan isi DATABASE_URL seperti di atas.
+5. Jalankan file yang sudah dicompile menggunakan PM2:
+   pm2 start dist/server.cjs --name "nexus-bot"
+   pm2 save
+
+------------------------------------------------------
+BAGIAN B: INSTALASI DI RDP (WINDOWS)
+------------------------------------------------------
+Catatan Penting: Jangan gunakan file bash script (seperti install.sh) di Windows. Jalankan command secara manual melalui CMD / PowerShell.
+
+[ 1. Versi Full Source Code (Unencrypted) ]
+1. Download dan install Node.js (https://nodejs.org/) & PostgreSQL untuk Windows.
+2. Ekstrak file bot di folder yang Anda inginkan (misal di Desktop).
+3. Buka Command Prompt (CMD) atau PowerShell di dalam folder tersebut (Bisa dengan ketik "cmd" di address bar File Explorer).
+4. Install dependencies:
+   npm install
+5. Buat file .env di folder bot, buka dengan Notepad, dan isi:
+   DATABASE_URL=postgres://postgres:password_anda@localhost:5432/nexusdb
+6. Build aplikasi:
+   npm run build
+7. Jalankan bot:
+   npm start
+   (Atau jika sudah install PM2 via npm: pm2 start npm --name "nexus-bot" -- start)
+
+[ 2. Versi ENC / Compiled (Siap Jual) ]
+1. Download dan install Node.js & PostgreSQL di RDP Anda.
+2. Ekstrak folder bot versi ENC.
+3. Buka CMD/PowerShell di folder tersebut.
+4. Install production dependencies:
+   npm install --omit=dev
+5. Buat file .env di folder tersebut dan isi DATABASE_URL menggunakan Notepad.
+6. Jalankan bot:
+   node dist/server.cjs
+   (Atau menggunakan PM2: pm2 start dist/server.cjs --name "nexus-bot")
+
+======================================================
+TROUBLESHOOTING UMUM:
+- Jika error "password authentication failed for user": Pastikan username dan password PostgreSQL di .env sudah benar.
+- Jika error "database does not exist": Buka pgAdmin (di Windows) atau psql (di Linux) dan buat database baru sesuai dengan nama yang ada di URL .env (misal: nexusdb).
+- Untuk melihat log aktivitas dan error bot (jika pakai PM2): ketik `pm2 logs nexus-bot`
+- Untuk restart bot: ketik `pm2 restart nexus-bot`
+======================================================

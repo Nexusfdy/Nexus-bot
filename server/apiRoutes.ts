@@ -1,3 +1,5 @@
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { Router } from "express";
 import multer from 'multer';
 import path from 'path';
@@ -48,17 +50,124 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-apiRouter.post("/auth/login", loginLimiter, (req, res) => {
+apiRouter.post("/auth/login", loginLimiter, async (req, res) => {
   const { password } = req.body;
-  if (password === ADMIN_PASSWORD) {
-    const token = generateToken();
-    res.json({ success: true, token });
-  } else {
-    res.status(401).json({ error: "Invalid password" });
+  try {
+    const adminAuth = await dbService.getAdminAuth();
+    
+    let isValid = false;
+    if (adminAuth && adminAuth.password_hash) {
+      // If a custom password is set, verify against it
+      isValid = await bcrypt.compare(password, adminAuth.password_hash);
+    } else {
+      // Fallback to ENV password if no custom password is set
+      isValid = (password === ADMIN_PASSWORD);
+    }
+
+    if (isValid) {
+      const token = generateToken();
+      res.json({ success: true, token });
+    } else {
+      res.status(401).json({ error: "Invalid password" });
+    }
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+apiRouter.post("/auth/reset/request", loginLimiter, async (req, res) => {
+  try {
+    const config = await dbService.getConfig();
+    if (!config.owner_id) {
+      return res.status(400).json({ error: "Owner ID belum disetting pada konfigurasi bot. Tidak dapat mengirim link reset password." });
+    }
+    if (!discordState.client) {
+      return res.status(500).json({ error: "Bot Discord sedang offline, tidak bisa mengirim pesan." });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const expiry = Date.now() + 15 * 60 * 1000; // 15 mins expiry
+    
+    await dbService.setAdminResetToken(resetToken, expiry);
+
+    // Kirim DM ke owner_id
+    const user = await discordState.client.users.fetch(config.owner_id);
+    if (!user) {
+      return res.status(400).json({ error: "User Discord (Owner ID) tidak ditemukan." });
+    }
+
+    // Karena user menggunakan frontend ini, url dashboard bisa diambil dari req.headers.origin atau req.get('host')
+    const origin = req.headers.origin || `http://${req.get('host')}`;
+    const resetLink = `${origin}/reset-password?token=${resetToken}`;
+    
+    await user.send(`🔒 **Permintaan Reset Password Dashboard**\n\nSeseorang baru saja meminta reset password untuk dashboard Nexus Bot Anda.\nJika ini adalah Anda, klik link berikut untuk mereset password:\n${resetLink}\n\n*Link ini hanya berlaku selama 15 menit.*`);
+    
+    res.json({ success: true, message: "Link reset password telah dikirim ke Discord Anda." });
+  } catch (err) {
+    console.error("Reset request error:", err);
+    res.status(500).json({ error: "Gagal mengirim pesan ke Discord." });
+  }
+});
+
+apiRouter.post("/auth/reset/confirm", async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: "Token dan password baru (min. 6 karakter) diperlukan." });
+  }
+  
+  try {
+    const adminAuth = await dbService.getAdminAuth();
+    if (!adminAuth || !adminAuth.reset_token || adminAuth.reset_token !== token) {
+      return res.status(400).json({ error: "Token reset password tidak valid atau sudah kadaluarsa." });
+    }
+    
+    if (Date.now() > (adminAuth.reset_token_expiry || 0)) {
+      return res.status(400).json({ error: "Token reset password sudah kadaluarsa." });
+    }
+    
+    const hash = await bcrypt.hash(newPassword, 10);
+    await dbService.updateAdminPassword(hash);
+    await dbService.clearAdminResetToken();
+    
+    res.json({ success: true, message: "Password berhasil diubah!" });
+  } catch (err) {
+    console.error("Reset confirm error:", err);
+    res.status(500).json({ error: "Gagal mereset password." });
   }
 });
 
 apiRouter.use(requireAuth);
+
+apiRouter.put("/auth/password", async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: "Password baru minimal 6 karakter." });
+  }
+  
+  try {
+    const adminAuth = await dbService.getAdminAuth();
+    let isValid = false;
+    
+    if (adminAuth && adminAuth.password_hash) {
+      isValid = await bcrypt.compare(currentPassword, adminAuth.password_hash);
+    } else {
+      isValid = (currentPassword === ADMIN_PASSWORD);
+    }
+    
+    if (!isValid) {
+      return res.status(401).json({ error: "Password saat ini salah." });
+    }
+    
+    const hash = await bcrypt.hash(newPassword, 10);
+    await dbService.updateAdminPassword(hash);
+    
+    res.json({ success: true, message: "Password berhasil diubah." });
+  } catch (err) {
+    console.error("Change password error:", err);
+    res.status(500).json({ error: "Gagal mengubah password." });
+  }
+});
 
 // 1. Products CRUD API Portals
 apiRouter.get("/products", async (req, res) => {
@@ -169,8 +278,10 @@ apiRouter.delete("/commands/:id", async (req, res) => {
 
 // 3. Configuration API Portals
 apiRouter.get("/config", async (req, res) => {
+  console.log("[API] GET /config called");
   try {
     const config = await dbService.getConfig();
+    console.log("[API] GET /config, returning ownerId:", config.ownerId); console.log("[API] GET /config returning ownerId:", config.ownerId);
     res.json(config);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -276,6 +387,7 @@ apiRouter.patch("/config/:section", async (req, res) => {
         body.greetingMessage !== undefined ? body.greetingMessage : (currentConfig.greetingMessage || '')
       );
     } else if (section === 'server') {
+      console.log("[API] Updating server config with:", body);
       await dbService.updateServerConfig(
         body.guildId !== undefined ? body.guildId : (currentConfig.guildId || ''),
         body.ownerId !== undefined ? body.ownerId : (currentConfig.ownerId || ''),
@@ -292,6 +404,7 @@ apiRouter.patch("/config/:section", async (req, res) => {
       return res.status(400).json({ error: "Invalid section" });
     }
 
+    if (section === 'livestock' || section === 'ui' || section === 'server') { if (discordState.client && discordState.botStatus === "ONLINE") { updateLiveStock(discordState.client); } }
     if (section === 'general' || section === 'features') {
       if (discordState.client && discordState.botStatus === "ONLINE") {
         const newConfig = await dbService.getConfig();
@@ -488,6 +601,23 @@ apiRouter.get("/bot/guilds", async (req, res) => {
   }
 });
 
+apiRouter.get("/bot/users/:userId", async (req, res) => {
+  if (!discordState.client || !discordState.client.isReady()) {
+    return res.status(503).json({ error: "Bot is not ready or offline" });
+  }
+
+  try {
+    const user = await discordState.client.users.fetch(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ id: user.id, username: user.username, tag: user.tag, avatar: user.displayAvatarURL() });
+  } catch (error: any) {
+    console.error("Failed to fetch user:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 apiRouter.get("/bot/guilds/:guildId/channels", async (req, res) => {
   if (!discordState.client || !discordState.client.isReady()) {
     return res.status(503).json({ error: "Bot is not ready or offline" });
@@ -496,15 +626,16 @@ apiRouter.get("/bot/guilds/:guildId/channels", async (req, res) => {
   const { guildId } = req.params;
 
   try {
-    const guild = discordState.client.guilds.cache.get(guildId);
+    const guild = await discordState.client.guilds.fetch(guildId).catch(() => null);
     if (!guild) {
       return res.status(404).json({ error: "Guild not found" });
     }
     
+    const fetchedChannels = await guild.channels.fetch();
     const channels: { id: string; name: string }[] = [];
-    guild.channels.cache.forEach(channel => {
+    fetchedChannels.forEach(channel => {
       // Hanya ambil channel bertipe teks (0 = GuildText, 5 = GuildAnnouncement, 15 = GuildForum) dll
-      if (channel.isTextBased()) {
+      if (channel && channel.isTextBased()) {
         channels.push({ 
           id: channel.id, 
           name: channel.name 
@@ -514,6 +645,98 @@ apiRouter.get("/bot/guilds/:guildId/channels", async (req, res) => {
     res.json(channels);
   } catch (error: any) {
     console.error("Failed to fetch channels:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiRouter.get("/bot/guilds/:guildId/roles", async (req, res) => {
+  if (!discordState.client || !discordState.client.isReady()) {
+    return res.status(503).json({ error: "Bot is not ready or offline" });
+  }
+  
+  const { guildId } = req.params;
+
+  try {
+    const guild = await discordState.client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) {
+      return res.status(404).json({ error: "Guild not found" });
+    }
+    
+    const fetchedRoles = await guild.roles.fetch();
+    const roles: { id: string; name: string; color: string }[] = [];
+    fetchedRoles.forEach(role => {
+      roles.push({ 
+        id: role.id, 
+        name: role.name,
+        color: role.hexColor
+      });
+    });
+    // Sort roles by position, highest first (Discord API doesn't guarantee order on fetch)
+    roles.sort((a, b) => {
+      const roleA = guild.roles.cache.get(a.id);
+      const roleB = guild.roles.cache.get(b.id);
+      return (roleB?.position || 0) - (roleA?.position || 0);
+    });
+    res.json(roles);
+  } catch (error: any) {
+    console.error("Failed to fetch roles:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiRouter.post("/bot/guilds/:guildId/channels/:channelId/test", async (req, res) => {
+  if (!discordState.client || !discordState.client.isReady()) {
+    return res.status(503).json({ error: "Bot is not ready or offline" });
+  }
+  
+  const { guildId, channelId } = req.params;
+
+  try {
+    const guild = await discordState.client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) {
+      return res.status(404).json({ error: "Guild not found" });
+    }
+    
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
+    if (!channel || !channel.isTextBased()) {
+      return res.status(404).json({ error: "Channel not found or not text-based" });
+    }
+    
+    await channel.send({
+      embeds: [{
+        title: "Test Message",
+        description: "This is a test message from Nexus Bot dashboard.",
+        color: 0x3b82f6 // blue-500
+      }]
+    });
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Failed to send test message:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiRouter.post("/bot/sync", async (req, res) => {
+  console.log("[Discord Bot] Sync Request received via Dashboard admin");
+  try {
+    if (!discordState.client || discordState.botStatus !== "ONLINE") {
+      return res.status(400).json({ error: "Bot is not online" });
+    }
+    
+    // Sync commands
+    await syncSlashCommands();
+    
+    // Sync livestock
+    await updateLiveStock(discordState.client);
+    
+    // Sync presence
+    const currentConfig = await dbService.getConfig();
+    applyBotPresence(discordState.client, currentConfig);
+    
+    res.json({ success: true, message: "Sinkronisasi berhasil (Commands, Live Stock, Presence)" });
+  } catch (error: any) {
+    console.error("Failed to sync bot state:", error);
     res.status(500).json({ error: error.message });
   }
 });

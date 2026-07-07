@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Check, RefreshCw } from 'lucide-react';
+import { Save, Check, RefreshCw, Send, Loader2 } from 'lucide-react';
 import { BotConfig } from '../../types';
 import BotTokenField from './BotTokenField';
 import StoreUIConfigPanel from './StoreUIConfigPanel';
@@ -52,11 +52,42 @@ export default function BotConfigForm({
   const [discordChannels, setDiscordChannels] = useState<{id: string, name: string}[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [channelsError, setChannelsError] = useState('');
+  
+  const [discordRoles, setDiscordRoles] = useState<{id: string, name: string, color: string}[]>([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [testingChannelId, setTestingChannelId] = useState<string | null>(null);
+  
+  const [ownerData, setOwnerData] = useState<{username: string, avatar: string, tag: string} | null>(null);
+  const [loadingOwner, setLoadingOwner] = useState(false);
 
   const guildIdRef = React.useRef(guildId);
   React.useEffect(() => {
     guildIdRef.current = guildId;
   }, [guildId]);
+  
+  React.useEffect(() => {
+    let active = true;
+    if (ownerId && ownerId.length >= 17) {
+      setLoadingOwner(true);
+      fetchWithAuth(`/api/bot/users/${ownerId}`)
+        .then(async res => {
+          if (!res.ok) throw new Error('Not found');
+          return await res.json();
+        })
+        .then(data => {
+          if (active) setOwnerData(data);
+        })
+        .catch(() => {
+          if (active) setOwnerData(null);
+        })
+        .finally(() => {
+          if (active) setLoadingOwner(false);
+        });
+    } else {
+      setOwnerData(null);
+    }
+    return () => { active = false; };
+  }, [ownerId]);
 
   const fetchGuilds = () => {
     setLoadingChannels(true);
@@ -97,6 +128,42 @@ export default function BotConfigForm({
       .finally(() => setLoadingChannels(false));
   };
 
+  const fetchRoles = (guildId: string) => {
+    setLoadingRoles(true);
+    fetchWithAuth(`/api/bot/guilds/${guildId}/roles`)
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP error ${res.status}`);
+        return data;
+      })
+      .then(data => {
+        if (Array.isArray(data)) {
+          setDiscordRoles(data);
+        }
+      })
+      .catch(err => console.error("Error fetching roles:", err))
+      .finally(() => setLoadingRoles(false));
+  };
+
+  const handleTestMessage = async (channelId: string) => {
+    if (!guildId || !channelId) return;
+    setTestingChannelId(channelId);
+    try {
+      const res = await fetchWithAuth(`/api/bot/guilds/${guildId}/channels/${channelId}/test`, {
+        method: 'POST'
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to send test message');
+      }
+      alert('Test message sent successfully!');
+    } catch (err: any) {
+      alert(`Error sending test message: ${err.message}`);
+    } finally {
+      setTestingChannelId(null);
+    }
+  };
+
   React.useEffect(() => {
     fetchGuilds();
   }, []);
@@ -104,8 +171,10 @@ export default function BotConfigForm({
   React.useEffect(() => {
     if (guildId) {
       fetchChannels(guildId);
+      fetchRoles(guildId);
     } else {
       setDiscordChannels([]);
+      setDiscordRoles([]);
     }
   }, [guildId]);
 
@@ -126,6 +195,7 @@ export default function BotConfigForm({
     try {
       if (onUpdatePartialConfig) {
         await onUpdatePartialConfig(section, data);
+        setIsDirty(false);
       }
     } finally {
       setSaving(false);
@@ -259,27 +329,28 @@ export default function BotConfigForm({
                 </h4>
                 
                 <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest pl-1">Target Channel</label>
-                <select
-                  value={liveStockChannel}
-                  onChange={e => { setLiveStockChannel(e.target.value); setIsDirty(true); }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none"
-                  disabled={!guildId && discordChannels.length > 0}
-                >
-                  <option value="">Tidak Aktif (None)</option>
-                  {discordChannels.length > 0 ? (
-                    discordChannels.map(ch => (
+                <div className="flex gap-2">
+                  <select
+                    value={liveStockChannel}
+                    onChange={e => { setLiveStockChannel(e.target.value); setIsDirty(true); }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none"
+                    disabled={!guildId && discordChannels.length > 0}
+                  >
+                    <option value="">Tidak Aktif (None)</option>
+                    {discordChannels.map(ch => (
                       <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="bot-order">#bot-order</option>
-                      <option value="live-stock">#live-stock</option>
-                      <option value="general">#general</option>
-                      <option value="announcements">#announcements</option>
-                      <option value="chat-bebas">#chat-bebas</option>
-                    </>
-                  )}
-                </select>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => liveStockChannel && handleTestMessage(liveStockChannel)}
+                    disabled={!liveStockChannel || testingChannelId === liveStockChannel}
+                    className="px-3 py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors disabled:opacity-50"
+                    title="Test Message"
+                    type="button"
+                  >
+                    {testingChannelId === liveStockChannel ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  </button>
+                </div>
                 <p className="text-[11px] text-slate-500 mt-2 pl-1 leading-relaxed mb-4">
                   Tempat Nexus Bot mengirimkan update stok otomatis.
                 </p>
@@ -304,25 +375,28 @@ export default function BotConfigForm({
                 </h4>
                 
                 <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest pl-1">Target Channel</label>
-                <select
-                  value={depositWebhookChannelId}
-                  onChange={e => { setDepositWebhookChannelId(e.target.value); setIsDirty(true); }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none"
-                  disabled={!guildId && discordChannels.length > 0}
-                >
-                  <option value="">Tidak Aktif (None)</option>
-                  {discordChannels.length > 0 ? (
-                    discordChannels.map(ch => (
+                <div className="flex gap-2">
+                  <select
+                    value={depositWebhookChannelId}
+                    onChange={e => { setDepositWebhookChannelId(e.target.value); setIsDirty(true); }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none"
+                    disabled={!guildId && discordChannels.length > 0}
+                  >
+                    <option value="">Tidak Aktif (None)</option>
+                    {discordChannels.map(ch => (
                       <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="donation-logs">#donation-logs</option>
-                      <option value="general">#general</option>
-                      <option value="bot-order">#bot-order</option>
-                    </>
-                  )}
-                </select>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => depositWebhookChannelId && handleTestMessage(depositWebhookChannelId)}
+                    disabled={!depositWebhookChannelId || testingChannelId === depositWebhookChannelId}
+                    className="px-3 py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors disabled:opacity-50"
+                    title="Test Message"
+                    type="button"
+                  >
+                    {testingChannelId === depositWebhookChannelId ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  </button>
+                </div>
                 <p className="text-[11px] text-slate-500 mt-2 pl-1 leading-relaxed mb-4">
                   Mendengarkan notifikasi top-up otomatis Saweria.
                 </p>
@@ -364,53 +438,104 @@ export default function BotConfigForm({
                 placeholder="Misal: 123456789012345678"
                 className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
               />
-              <p className="text-[11px] text-slate-500 mt-2 pl-1 leading-relaxed">
+              <p className="text-[11px] text-slate-500 mt-2 pl-1 leading-relaxed mb-3">
                 User dengan ID ini akan mendapatkan hak akses penuh (bypass) di server.
               </p>
+              {loadingOwner ? (
+                <div className="flex items-center space-x-2 text-slate-400 text-xs px-1">
+                  <div className="w-3 h-3 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+                  <span>Mencari user...</span>
+                </div>
+              ) : ownerData ? (
+                <div className="flex items-center space-x-3 bg-slate-800/40 p-3 rounded-xl border border-slate-700/50">
+                  {ownerData.avatar ? (
+                    <img src={ownerData.avatar} alt="Owner Avatar" className="w-8 h-8 rounded-full shadow-sm" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-sm font-bold">
+                      {ownerData.username.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-slate-200 leading-tight">{ownerData.tag || ownerData.username}</span>
+                    <span className="text-[10px] text-emerald-400 font-medium">Owner Terverifikasi ✓</span>
+                  </div>
+                </div>
+              ) : ownerId && ownerId.length >= 17 ? (
+                <div className="text-xs text-amber-400/80 px-1">User tidak ditemukan di cache bot.</div>
+              ) : null}
             </div>
             
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-2 pl-1 uppercase tracking-wider">Welcome Channel</label>
-              <select
-                value={serverManagement?.welcomeChannelId || ''}
-                onChange={(e) => { setServerManagement({ ...serverManagement, welcomeChannelId: e.target.value }); setIsDirty(true); }}
-                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                disabled={!guildId && discordChannels.length > 0}
-              >
-                <option value="">-- Pilih Channel Welcome --</option>
-                {discordChannels.length > 0 ? (
-                  discordChannels.map(ch => (
+              <div className="flex gap-2">
+                <select
+                  value={serverManagement?.welcomeChannelId || ''}
+                  onChange={(e) => { setServerManagement({ ...serverManagement, welcomeChannelId: e.target.value }); setIsDirty(true); }}
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                  disabled={!guildId && discordChannels.length > 0}
+                >
+                  <option value="">-- Pilih Channel Welcome --</option>
+                  {discordChannels.map(ch => (
                     <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                  ))
-                ) : (
-                  <>
-                    <option value="welcome">#welcome</option>
-                    <option value="general">#general</option>
-                  </>
-                )}
-              </select>
+                  ))}
+                </select>
+                <button
+                  onClick={() => serverManagement?.welcomeChannelId && handleTestMessage(serverManagement.welcomeChannelId)}
+                  disabled={!serverManagement?.welcomeChannelId || testingChannelId === serverManagement.welcomeChannelId}
+                  className="px-3 py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors disabled:opacity-50"
+                  title="Test Message"
+                  type="button"
+                >
+                  {testingChannelId === serverManagement?.welcomeChannelId ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-2 pl-1 uppercase tracking-wider">Log Channel</label>
-              <select
-                value={serverManagement?.logChannelId || ''}
-                onChange={(e) => { setServerManagement({ ...serverManagement, logChannelId: e.target.value }); setIsDirty(true); }}
-                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                disabled={!guildId && discordChannels.length > 0}
-              >
-                <option value="">-- Pilih Channel Log --</option>
-                {discordChannels.length > 0 ? (
-                  discordChannels.map(ch => (
+              <div className="flex gap-2">
+                <select
+                  value={serverManagement?.logChannelId || ''}
+                  onChange={(e) => { setServerManagement({ ...serverManagement, logChannelId: e.target.value }); setIsDirty(true); }}
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                  disabled={!guildId && discordChannels.length > 0}
+                >
+                  <option value="">-- Pilih Channel Log --</option>
+                  {discordChannels.map(ch => (
                     <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                  ))
-                ) : (
-                  <>
-                    <option value="mod-logs">#mod-logs</option>
-                    <option value="bot-logs">#bot-logs</option>
-                  </>
-                )}
+                  ))}
+                </select>
+                <button
+                  onClick={() => serverManagement?.logChannelId && handleTestMessage(serverManagement.logChannelId)}
+                  disabled={!serverManagement?.logChannelId || testingChannelId === serverManagement.logChannelId}
+                  className="px-3 py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors disabled:opacity-50"
+                  title="Test Message"
+                  type="button"
+                >
+                  {testingChannelId === serverManagement?.logChannelId ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-2 pl-1 uppercase tracking-wider flex items-center justify-between">
+                <span>Buyer Role Mapping</span>
+                {loadingRoles && <Loader2 className="w-3 h-3 animate-spin" />}
+              </label>
+              <select
+                value={serverManagement?.buyerRoleId || ''}
+                onChange={(e) => { setServerManagement({ ...serverManagement, buyerRoleId: e.target.value }); setIsDirty(true); }}
+                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                disabled={!guildId || loadingRoles}
+              >
+                <option value="">-- Pilih Role Pembeli --</option>
+                {discordRoles.map(role => (
+                  <option key={role.id} value={role.id} style={{ color: role.color !== '#000000' ? role.color : 'inherit' }}>
+                    {role.name}
+                  </option>
+                ))}
               </select>
+              <p className="text-[11px] text-slate-500 mt-2 pl-1">Role yang diberikan otomatis saat transaksi berhasil.</p>
             </div>
           </div>
 

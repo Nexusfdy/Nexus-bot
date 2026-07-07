@@ -557,6 +557,19 @@ export async function initializeDiscordBot() {
                     } catch (replyErr) {
                       console.error(`[Reply Failed] Could not reply to interaction for tx ${txId}:`, replyErr);
                     }
+
+                    // Role Mapping: Assign buyer role if configured
+                    try {
+                      const config = await dbService.getConfig();
+                      if (config.serverManagement?.buyerRoleId && interaction.guild) {
+                        const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+                        if (member) {
+                           await member.roles.add(config.serverManagement.buyerRoleId).catch(e => console.error("Failed to add buyer role:", e));
+                        }
+                      }
+                    } catch (roleErr) {
+                      console.error(`[Role Assignment Failed] Could not assign buyer role for ${interaction.user.id}:`, roleErr);
+                    }
                   } else {
                     // Refund if DM fails
                     await dbService.refundPurchase(interaction.user.id, product.id, stockItems, totalCost, txId);
