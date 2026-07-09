@@ -10,7 +10,7 @@ interface BotProfileFeaturesProps {
 export default function BotProfileFeatures({ config, botToken }: BotProfileFeaturesProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
         <div className="flex items-start gap-4">
           <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20 shrink-0">
             <ShieldCheck className="w-5 h-5" />
@@ -26,7 +26,7 @@ export default function BotProfileFeatures({ config, botToken }: BotProfileFeatu
         </div>
       </div>
 
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
         <div className="flex items-start gap-4">
           <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20 shrink-0">
             <Activity className="w-5 h-5" />
@@ -45,7 +45,7 @@ export default function BotProfileFeatures({ config, botToken }: BotProfileFeatu
         </div>
       </div>
 
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
         <div className="flex items-start gap-4">
           <div className="p-2.5 bg-sky-500/10 text-sky-400 rounded-xl border border-sky-500/20 shrink-0">
             <BarChart className="w-5 h-5" />
@@ -61,7 +61,7 @@ export default function BotProfileFeatures({ config, botToken }: BotProfileFeatu
         </div>
       </div>
 
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
         <div className="flex items-start gap-4">
           <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20 shrink-0">
             <MessageSquare className="w-5 h-5" />
@@ -77,7 +77,7 @@ export default function BotProfileFeatures({ config, botToken }: BotProfileFeatu
         </div>
       </div>
 
-      <div className="bg-[#0f1523] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors md:col-span-2 relative overflow-hidden group">
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors md:col-span-2 relative overflow-hidden group">
         <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/5 blur-2xl rounded-full" />
         <div className="flex items-start gap-4 relative z-10">
           <div className="p-2.5 bg-slate-900 text-slate-400 rounded-xl border border-slate-800 shrink-0">

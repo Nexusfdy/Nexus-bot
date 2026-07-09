@@ -14,7 +14,7 @@ export default function BotProfileAvatar({
   botUser, botError, statusTextLabel, statusTextColor, statusPulseColor, isErrState
 }: BotProfileAvatarProps) {
   return (
-    <div className="bg-[#0f1523] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
+    <div className="bg-[#0B0F19] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
       <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-br from-indigo-900/40 via-transparent to-transparent opacity-50" />
       
       <div className="relative z-10 flex flex-col items-center">
@@ -30,7 +30,7 @@ export default function BotProfileAvatar({
               )}
             </div>
           </div>
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#0f1523] rounded-full flex items-center justify-center">
+          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#0B0F19] rounded-full flex items-center justify-center">
             <div className={`w-3.5 h-3.5 rounded-full ${statusPulseColor} shadow-md shadow-black flex items-center justify-center`}>
               <div className="w-full h-full rounded-full animate-ping opacity-75 inherit bg-current" />
             </div>

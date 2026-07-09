@@ -53,7 +53,7 @@ export default function AdminPasswordPanel() {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mt-6">
+    <div className="bg-[#0B0F19] border border-slate-800/80 rounded-[32px] shadow-2xl shadow-indigo-500/5 overflow-hidden mt-6 relative">
       <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
           <Lock size={18} />

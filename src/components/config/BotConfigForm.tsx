@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, Check, RefreshCw, Send, Loader2 } from 'lucide-react';
+import { Save, Check, RefreshCw, Send, Loader2, Settings, ShieldCheck, Server } from 'lucide-react';
 import { BotConfig } from '../../types';
 import BotTokenField from './BotTokenField';
 import StoreUIConfigPanel from './StoreUIConfigPanel';
@@ -211,11 +211,16 @@ export default function BotConfigForm({
   };
 
   return (
-    <div className="bg-[#0f1523] border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl mt-6">
+    <div className="bg-[#0B0F19] border border-slate-800/80 rounded-[32px] p-6 md:p-10 shadow-2xl shadow-indigo-500/5 mt-6 relative overflow-hidden">
       <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-800/60">
-        <div>
-          <h2 className="text-xl font-bold font-display text-white">Edit Setelan Kredensial & Bot</h2>
-          <p className="text-xs text-slate-400 mt-1">Sesuaikan integrasi gateway Discord dengan platform Nexus</p>
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-500/20">
+            <Settings className="w-6 h-6 text-indigo-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold font-display text-white">Edit Setelan Kredensial & Bot</h2>
+            <p className="text-xs text-slate-400 mt-1">Sesuaikan integrasi gateway Discord dengan platform Nexus</p>
+          </div>
         </div>
         {config.botToken && config.botToken !== 'NONE' && (
           <button type="button" onClick={() => setIsEditing(false)} className="text-xs font-semibold text-slate-400 hover:text-white transition-colors">
@@ -226,26 +231,26 @@ export default function BotConfigForm({
 
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800">
+          <div className="bg-slate-900/40 border border-slate-700/50 p-6 rounded-3xl">
             <BotTokenField botToken={botToken} setBotToken={setBotToken} showToken={showToken} setShowToken={setShowToken} setIsDirty={setIsDirty} />
             <div className="mt-4 flex justify-end">
               <button 
                 onClick={() => handleUpdate('discord', { botToken }, setSavingDiscord)}
                 disabled={savingDiscord}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
               >
                 {savingDiscord ? 'Saving...' : 'Save Discord Config'}
               </button>
             </div>
           </div>
           
-          <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800">
+          <div className="bg-slate-900/40 border border-slate-700/50 p-6 rounded-3xl">
             <BotIdentityFields prefix={prefix} setPrefix={setPrefix} statusText={statusText} setStatusText={setStatusText} statusType={statusType} setStatusType={setStatusType} setIsDirty={setIsDirty} />
             <div className="mt-4 flex justify-end">
               <button 
                 onClick={() => handleUpdate('general', { prefix, statusText, statusType }, setSavingGeneral)}
                 disabled={savingGeneral}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
               >
                 {savingGeneral ? 'Saving...' : 'Save General Config'}
               </button>
@@ -253,7 +258,7 @@ export default function BotConfigForm({
           </div>
         </div>
 
-        <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-5 mt-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-3xl p-6 mt-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <label className="flex items-start gap-4 cursor-pointer group">
             <div className="relative flex items-center justify-center mt-1 shrink-0">
               <input
@@ -276,23 +281,28 @@ export default function BotConfigForm({
           <button 
             onClick={() => handleUpdate('features', { autoClaimOnPayment, webhookUrl, greetingMessage }, setSavingFeatures)}
             disabled={savingFeatures}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 shrink-0"
+            className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 shrink-0"
           >
             {savingFeatures ? 'Saving...' : 'Save Feature'}
           </button>
         </div>
 
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 mt-6">
+        <div className="bg-slate-900/40 border border-slate-700/50 rounded-3xl p-6 mt-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
-            <div>
-              <h3 className="text-sm font-bold text-slate-200">Konfigurasi Channel Integrasi</h3>
-              <p className="text-[11px] text-slate-500 mt-1">Pilih server dan atur pengiriman notifikasi otomatis</p>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-800/50 flex items-center justify-center border border-slate-700/50">
+                <Server className="w-5 h-5 text-slate-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-200">Konfigurasi Channel Integrasi</h3>
+                <p className="text-[11px] text-slate-500 mt-1">Pilih server dan atur pengiriman notifikasi otomatis</p>
+              </div>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <select
                 value={guildId}
                 onChange={e => handleGuildChange(e.target.value)}
-                className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 sm:py-1.5 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none w-full sm:w-auto"
+                className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 sm:py-1.5 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-colors cursor-pointer appearance-none w-full sm:w-auto"
               >
                 <option value="" disabled>-- Pilih Server --</option>
                 {discordGuilds.map(guild => (
@@ -321,7 +331,7 @@ export default function BotConfigForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-6">
             {/* Live Stock Configuration */}
-            <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-700/50 flex flex-col justify-between">
               <div>
                 <h4 className="text-xs font-bold text-slate-300 mb-4 flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
@@ -333,7 +343,7 @@ export default function BotConfigForm({
                   <select
                     value={liveStockChannel}
                     onChange={e => { setLiveStockChannel(e.target.value); setIsDirty(true); }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-colors cursor-pointer appearance-none"
                     disabled={!guildId && discordChannels.length > 0}
                   >
                     <option value="">Tidak Aktif (None)</option>
@@ -359,7 +369,7 @@ export default function BotConfigForm({
                 <button 
                   onClick={() => handleUpdate('livestock', { guildId, liveStockChannel }, setSavingLiveStock)}
                   disabled={savingLiveStock}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                  className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                 >
                   {savingLiveStock ? 'Saving...' : 'Save Live Stock'}
                 </button>
@@ -367,7 +377,7 @@ export default function BotConfigForm({
             </div>
 
             {/* Deposit Webhook Configuration */}
-            <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+            <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-700/50 flex flex-col justify-between">
               <div>
                 <h4 className="text-xs font-bold text-slate-300 mb-4 flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
@@ -379,7 +389,7 @@ export default function BotConfigForm({
                   <select
                     value={depositWebhookChannelId}
                     onChange={e => { setDepositWebhookChannelId(e.target.value); setIsDirty(true); }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-colors cursor-pointer appearance-none"
                     disabled={!guildId && discordChannels.length > 0}
                   >
                     <option value="">Tidak Aktif (None)</option>
@@ -405,7 +415,7 @@ export default function BotConfigForm({
                 <button 
                   onClick={() => handleUpdate('saweria', { depositWebhookChannelId }, setSavingSaweria)}
                   disabled={savingSaweria}
-                  className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                 >
                   {savingSaweria ? 'Saving...' : 'Save Saweria Channel'}
                 </button>
@@ -415,15 +425,18 @@ export default function BotConfigForm({
         </div>
 
         {/* Server Management & Owner Recognition */}
-        <div className="pt-6 border-t border-slate-800/60">
+        <div className="pt-8 mt-8 border-t border-slate-800/60">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
             <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+                <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              </div>
               Manajemen Server & Owner
             </h3>
             <button 
               onClick={() => handleUpdate('server', { guildId, ownerId, serverManagement }, setSavingServer)}
               disabled={savingServer}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+              className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
             >
               {savingServer ? 'Saving...' : 'Save Server Settings'}
             </button>
@@ -436,7 +449,7 @@ export default function BotConfigForm({
                 value={ownerId || ''}
                 onChange={(e) => { setOwnerId(e.target.value); setIsDirty(true); }}
                 placeholder="Misal: 123456789012345678"
-                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
               />
               <p className="text-[11px] text-slate-500 mt-2 pl-1 leading-relaxed mb-3">
                 User dengan ID ini akan mendapatkan hak akses penuh (bypass) di server.
@@ -471,7 +484,7 @@ export default function BotConfigForm({
                 <select
                   value={serverManagement?.welcomeChannelId || ''}
                   onChange={(e) => { setServerManagement({ ...serverManagement, welcomeChannelId: e.target.value }); setIsDirty(true); }}
-                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
                   disabled={!guildId && discordChannels.length > 0}
                 >
                   <option value="">-- Pilih Channel Welcome --</option>
@@ -497,7 +510,7 @@ export default function BotConfigForm({
                 <select
                   value={serverManagement?.logChannelId || ''}
                   onChange={(e) => { setServerManagement({ ...serverManagement, logChannelId: e.target.value }); setIsDirty(true); }}
-                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
                   disabled={!guildId && discordChannels.length > 0}
                 >
                   <option value="">-- Pilih Channel Log --</option>
@@ -525,7 +538,7 @@ export default function BotConfigForm({
               <select
                 value={serverManagement?.buyerRoleId || ''}
                 onChange={(e) => { setServerManagement({ ...serverManagement, buyerRoleId: e.target.value }); setIsDirty(true); }}
-                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
                 disabled={!guildId || loadingRoles}
               >
                 <option value="">-- Pilih Role Pembeli --</option>
@@ -539,7 +552,7 @@ export default function BotConfigForm({
             </div>
           </div>
 
-        <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-800">
+        <div className="bg-slate-900/40 border border-slate-700/50 p-6 rounded-3xl">
           <StoreUIConfigPanel config={config.uiConfig} onSave={handleUpdateUIConfig} />
         </div>
 

@@ -51,7 +51,7 @@ export default function BotProfileCard({ config, setIsEditing, botStatus, botUse
             isErrState={isErrState}
           />
 
-          <div className="bg-[#0f1523] border border-slate-800 rounded-3xl p-6 relative overflow-hidden group">
+          <div className="bg-[#0B0F19] border border-slate-800 rounded-3xl p-6 relative overflow-hidden group">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Prefix Perintah</h3>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-center shrink-0">

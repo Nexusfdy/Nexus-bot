@@ -38,7 +38,7 @@ export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMes
   };
 
   return (
-    <div className="bg-[#0f1523] border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+    <div className="bg-[#0B0F19] border border-slate-800/80 rounded-[32px] p-6 md:p-10 shadow-2xl shadow-indigo-500/5 mt-6 relative overflow-hidden space-y-6">
       <div className="flex items-center justify-between border-b border-slate-800/50 pb-4 mb-2">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20 shadow-inner">
@@ -67,7 +67,7 @@ export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMes
               value={webhookUrl}
               onChange={e => { setWebhookUrl(e.target.value); setIsDirty(true); }}
               placeholder="https://discord.com/api/webhooks/..."
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 transition-all font-mono"
             />
             <button
               type="button"
@@ -77,7 +77,7 @@ export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMes
                 px-5 py-2.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center justify-center gap-2
                 ${(!webhookUrl || testingWebhook) 
                   ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50' 
-                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-900/20'
                 }
               `}
             >
@@ -108,7 +108,7 @@ export default function WebhookSettings({ webhookUrl, setWebhookUrl, greetingMes
           <textarea
             value={greetingMessage}
             onChange={e => { setGreetingMessage(e.target.value); setIsDirty(true); }}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none font-medium h-24"
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 transition-all resize-none font-medium h-24"
             placeholder="Ketik pesan selamat datang atau instruksi pembelian otomatis di sini..."
           />
         </div>

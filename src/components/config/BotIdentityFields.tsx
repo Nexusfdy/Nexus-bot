@@ -34,7 +34,7 @@ export default function BotIdentityFields({
               required
               value={prefix}
               onChange={e => { setPrefix(e.target.value); setIsDirty(true); }}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono font-bold"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono font-bold"
               placeholder="!"
             />
           </div>
@@ -45,7 +45,7 @@ export default function BotIdentityFields({
           <select
             value={statusType}
             onChange={e => { setStatusType(e.target.value as any); setIsDirty(true); }}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium appearance-none"
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium appearance-none"
           >
             <option value="PLAYING">Sedang Bermain (Playing)</option>
             <option value="WATCHING">Sedang Menonton (Watching)</option>
@@ -65,7 +65,7 @@ export default function BotIdentityFields({
               required
               value={statusText}
               onChange={e => { setStatusText(e.target.value); setIsDirty(true); }}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 transition-all"
               placeholder="Nexus Auto-Store | /buy"
             />
           </div>
